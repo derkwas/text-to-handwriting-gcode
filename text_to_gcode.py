@@ -8,6 +8,16 @@ import path_generator
 import gcode_generator
 
 
+def _text_to_paths(layouts):
+    """Use handwriting font if available, otherwise fall back to Hershey."""
+    font = path_generator.load_handwriting_font()
+    if font:
+        glyphs = font.get('glyphs', {})
+        print(f"Using handwriting font ({len(glyphs)} glyphs)")
+        return path_generator.generate_paths_handwriting(layouts, font)
+    return path_generator.generate_paths(layouts)
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python text_to_gcode.py [text|file|draw] <content>")
@@ -28,12 +38,12 @@ def main():
         with open(file_path, 'r', encoding='utf-8') as f:
             text = f.read()
         layouts = text_layout.layout_text(text)
-        paths = path_generator.generate_paths(layouts)
+        paths = _text_to_paths(layouts)
     else:
         # everything else treated as text; allow mode keyword 'text' optionally
         text = ' '.join(sys.argv[1:]) if mode != 'text' else (' '.join(sys.argv[2:]) if len(sys.argv) > 2 else '')
         layouts = text_layout.layout_text(text)
-        paths = path_generator.generate_paths(layouts)
+        paths = _text_to_paths(layouts)
 
     # Cap total paths to avoid runaway generation
     max_paths = 10000

@@ -1,0 +1,445 @@
+{
+  "version": 2,
+  "glyphs": {
+    "t": [
+      {
+        "path": "t\\t_0.png",
+        "orig_h": 46
+      },
+      {
+        "path": "t\\t_1.png",
+        "orig_h": 36
+      }
+    ],
+    "h": [
+      {
+        "path": "h\\h_0.png",
+        "orig_h": 43
+      },
+      {
+        "path": "h\\h_1.png",
+        "orig_h": 36
+      }
+    ],
+    "i": [
+      {
+        "path": "i\\i_0.png",
+        "orig_h": 49
+      }
+    ],
+    "b": [
+      {
+        "path": "b\\b_0.png",
+        "orig_h": 41
+      }
+    ],
+    "f": [
+      {
+        "path": "f\\f_0.png",
+        "orig_h": 40
+      }
+    ],
+    "l": [
+      {
+        "path": "l\\l_0.png",
+        "orig_h": 35
+      }
+    ],
+    "d": [
+      {
+        "path": "d\\d_0.png",
+        "orig_h": 41
+      }
+    ],
+    "e": [
+      {
+        "path": "e\\e_0.png",
+        "orig_h": 27
+      },
+      {
+        "path": "e\\e_1.png",
+        "orig_h": 24
+      },
+      {
+        "path": "e\\e_2.png",
+        "orig_h": 26
+      }
+    ],
+    "q": [
+      {
+        "path": "q\\q_0.png",
+        "orig_h": 52
+      }
+    ],
+    "u": [
+      {
+        "path": "u\\u_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "u\\u_1.png",
+        "orig_h": 22
+      }
+    ],
+    "c": [
+      {
+        "path": "c\\c_0.png",
+        "orig_h": 22
+      }
+    ],
+    "k": [
+      {
+        "path": "k\\k_0.png",
+        "orig_h": 25
+      }
+    ],
+    "r": [
+      {
+        "path": "r\\r_0.png",
+        "orig_h": 27
+      }
+    ],
+    "o": [
+      {
+        "path": "o\\o_0.png",
+        "orig_h": 24
+      },
+      {
+        "path": "o\\o_1.png",
+        "orig_h": 18
+      },
+      {
+        "path": "o\\o_2.png",
+        "orig_h": 18
+      },
+      {
+        "path": "o\\o_3.png",
+        "orig_h": 20
+      }
+    ],
+    "w": [
+      {
+        "path": "w\\w_0.png",
+        "orig_h": 23
+      }
+    ],
+    "n": [
+      {
+        "path": "n\\n_0.png",
+        "orig_h": 26
+      }
+    ],
+    "x": [
+      {
+        "path": "x\\x_0.png",
+        "orig_h": 23
+      }
+    ],
+    "j": [
+      {
+        "path": "j\\j_0.png",
+        "orig_h": 35
+      }
+    ],
+    "m": [
+      {
+        "path": "m\\m_0.png",
+        "orig_h": 26
+      }
+    ],
+    "p": [
+      {
+        "path": "p\\p_0.png",
+        "orig_h": 43
+      }
+    ],
+    "s": [
+      {
+        "path": "s\\s_0.png",
+        "orig_h": 22
+      }
+    ],
+    "v": [
+      {
+        "path": "v\\v_0.png",
+        "orig_h": 25
+      }
+    ],
+    "a": [
+      {
+        "path": "a\\a_0.png",
+        "orig_h": 20
+      }
+    ],
+    "z": [
+      {
+        "path": "z\\z_0.png",
+        "orig_h": 24
+      }
+    ],
+    "y": [
+      {
+        "path": "y\\y_0.png",
+        "orig_h": 36
+      }
+    ],
+    "g": [
+      {
+        "path": "g\\g_0.png",
+        "orig_h": 38
+      }
+    ],
+    "T": [
+      {
+        "path": "upper_T\\upper_T_0.png",
+        "orig_h": 39
+      },
+      {
+        "path": "upper_T\\upper_T_1.png",
+        "orig_h": 30
+      }
+    ],
+    "H": [
+      {
+        "path": "upper_H\\upper_H_0.png",
+        "orig_h": 34
+      },
+      {
+        "path": "upper_H\\upper_H_1.png",
+        "orig_h": 31
+      }
+    ],
+    "E": [
+      {
+        "path": "upper_E\\upper_E_0.png",
+        "orig_h": 36
+      },
+      {
+        "path": "upper_E\\upper_E_1.png",
+        "orig_h": 29
+      },
+      {
+        "path": "upper_E\\upper_E_2.png",
+        "orig_h": 31
+      }
+    ],
+    "Q": [
+      {
+        "path": "upper_Q\\upper_Q_0.png",
+        "orig_h": 41
+      }
+    ],
+    "U": [
+      {
+        "path": "upper_U\\upper_U_0.png",
+        "orig_h": 34
+      },
+      {
+        "path": "upper_U\\upper_U_1.png",
+        "orig_h": 31
+      }
+    ],
+    "I": [
+      {
+        "path": "upper_I\\upper_I_0.png",
+        "orig_h": 31
+      }
+    ],
+    "C": [
+      {
+        "path": "upper_C\\upper_C_0.png",
+        "orig_h": 35
+      }
+    ],
+    "K": [
+      {
+        "path": "upper_K\\upper_K_0.png",
+        "orig_h": 35
+      }
+    ],
+    "B": [
+      {
+        "path": "upper_B\\upper_B_0.png",
+        "orig_h": 41
+      }
+    ],
+    "R": [
+      {
+        "path": "upper_R\\upper_R_0.png",
+        "orig_h": 41
+      },
+      {
+        "path": "upper_R\\upper_R_1.png",
+        "orig_h": 29
+      }
+    ],
+    "O": [
+      {
+        "path": "upper_O\\upper_O_0.png",
+        "orig_h": 31
+      },
+      {
+        "path": "upper_O\\upper_O_1.png",
+        "orig_h": 32
+      },
+      {
+        "path": "upper_O\\upper_O_2.png",
+        "orig_h": 33
+      },
+      {
+        "path": "upper_O\\upper_O_3.png",
+        "orig_h": 29
+      }
+    ],
+    "W": [
+      {
+        "path": "upper_W\\upper_W_0.png",
+        "orig_h": 31
+      }
+    ],
+    "N": [
+      {
+        "path": "upper_N\\upper_N_0.png",
+        "orig_h": 37
+      }
+    ],
+    "F": [
+      {
+        "path": "upper_F\\upper_F_0.png",
+        "orig_h": 38
+      }
+    ],
+    "X": [
+      {
+        "path": "upper_X\\upper_X_0.png",
+        "orig_h": 32
+      }
+    ],
+    "J": [
+      {
+        "path": "upper_J\\upper_J_0.png",
+        "orig_h": 29
+      }
+    ],
+    "M": [
+      {
+        "path": "upper_M\\upper_M_0.png",
+        "orig_h": 34
+      }
+    ],
+    "P": [
+      {
+        "path": "upper_P\\upper_P_0.png",
+        "orig_h": 36
+      }
+    ],
+    "S": [
+      {
+        "path": "upper_S\\upper_S_0.png",
+        "orig_h": 32
+      }
+    ],
+    "V": [
+      {
+        "path": "upper_V\\upper_V_0.png",
+        "orig_h": 27
+      }
+    ],
+    "L": [
+      {
+        "path": "upper_L\\upper_L_0.png",
+        "orig_h": 34
+      }
+    ],
+    "A": [
+      {
+        "path": "upper_A\\upper_A_0.png",
+        "orig_h": 28
+      }
+    ],
+    "Z": [
+      {
+        "path": "upper_Z\\upper_Z_0.png",
+        "orig_h": 28
+      }
+    ],
+    "Y": [
+      {
+        "path": "upper_Y\\upper_Y_0.png",
+        "orig_h": 27
+      }
+    ],
+    "D": [
+      {
+        "path": "upper_D\\upper_D_0.png",
+        "orig_h": 31
+      }
+    ],
+    "G": [
+      {
+        "path": "upper_G\\upper_G_0.png",
+        "orig_h": 31
+      }
+    ],
+    "¢": [
+      {
+        "path": "¢\\¢_0.png",
+        "orig_h": 46
+      }
+    ],
+    "2": [
+      {
+        "path": "2\\2_0.png",
+        "orig_h": 27
+      }
+    ],
+    "3": [
+      {
+        "path": "3\\3_0.png",
+        "orig_h": 28
+      }
+    ],
+    "4": [
+      {
+        "path": "4\\4_0.png",
+        "orig_h": 28
+      }
+    ],
+    "5": [
+      {
+        "path": "5\\5_0.png",
+        "orig_h": 34
+      }
+    ],
+    "6": [
+      {
+        "path": "6\\6_0.png",
+        "orig_h": 32
+      }
+    ],
+    "7": [
+      {
+        "path": "7\\7_0.png",
+        "orig_h": 28
+      }
+    ],
+    "8": [
+      {
+        "path": "8\\8_0.png",
+        "orig_h": 35
+      }
+    ],
+    "9": [
+      {
+        "path": "9\\9_0.png",
+        "orig_h": 31
+      }
+    ],
+    "0": [
+      {
+        "path": "0\\0_0.png",
+        "orig_h": 30
+      }
+    ]
+  }
+}

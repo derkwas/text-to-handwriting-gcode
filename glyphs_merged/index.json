@@ -1,0 +1,1153 @@
+{
+  "version": 2,
+  "glyphs": {
+    "(": [
+      {
+        "path": "u0028/glyphs_lparen_0.png",
+        "orig_h": null
+      }
+    ],
+    ")": [
+      {
+        "path": "u0029/glyphs_rparen_0.png",
+        "orig_h": null
+      }
+    ],
+    "0": [
+      {
+        "path": "0/glyphs_0_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "0/glyphs_hw1_0_0.png",
+        "orig_h": 15
+      },
+      {
+        "path": "0/glyphs_hw_0_0.png",
+        "orig_h": 18
+      },
+      {
+        "path": "0/0_0.png",
+        "orig_h": null
+      }
+    ],
+    "1": [
+      {
+        "path": "1/glyphs_hw_1_0.png",
+        "orig_h": 14
+      }
+    ],
+    "2": [
+      {
+        "path": "2/glyphs_2_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "2/glyphs_2_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "2/glyphs_2_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "2/glyphs_hw1_2_0.png",
+        "orig_h": 13
+      }
+    ],
+    "3": [
+      {
+        "path": "3/glyphs_3_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "3/glyphs_3_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "3/glyphs_3_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "3/glyphs_hw1_3_0.png",
+        "orig_h": 14
+      }
+    ],
+    "4": [
+      {
+        "path": "4/glyphs_4_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "4/glyphs_hw1_4_0.png",
+        "orig_h": 15
+      },
+      {
+        "path": "4/glyphs_hw_4_0.png",
+        "orig_h": 22
+      },
+      {
+        "path": "4/4_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "4/4_1.png",
+        "orig_h": null
+      }
+    ],
+    "5": [
+      {
+        "path": "5/glyphs_5_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "5/glyphs_5_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "5/glyphs_hw1_5_0.png",
+        "orig_h": 19
+      },
+      {
+        "path": "5/glyphs_hw_5_0.png",
+        "orig_h": 24
+      },
+      {
+        "path": "5/5_0.png",
+        "orig_h": null
+      }
+    ],
+    "6": [
+      {
+        "path": "6/glyphs_6_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "6/glyphs_6_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "6/glyphs_hw1_6_0.png",
+        "orig_h": 21
+      },
+      {
+        "path": "6/glyphs_hw_6_0.png",
+        "orig_h": 27
+      }
+    ],
+    "7": [
+      {
+        "path": "7/glyphs_7_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "7/glyphs_7_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "7/glyphs_hw1_7_0.png",
+        "orig_h": 14
+      },
+      {
+        "path": "7/glyphs_hw_7_0.png",
+        "orig_h": 17
+      }
+    ],
+    "8": [
+      {
+        "path": "8/glyphs_8_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "8/glyphs_hw1_8_0.png",
+        "orig_h": 22
+      },
+      {
+        "path": "8/8_0.png",
+        "orig_h": null
+      }
+    ],
+    "9": [
+      {
+        "path": "9/glyphs_hw1_9_0.png",
+        "orig_h": 18
+      },
+      {
+        "path": "9/glyphs_hw_9_0.png",
+        "orig_h": 23
+      },
+      {
+        "path": "9/9_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "9/9_1.png",
+        "orig_h": null
+      }
+    ],
+    "B": [
+      {
+        "path": "upper_B/glyphs_hw1_upper_B_0.png",
+        "orig_h": 32
+      },
+      {
+        "path": "upper_B/glyphs_hw_upper_B_0.png",
+        "orig_h": 41
+      }
+    ],
+    "C": [
+      {
+        "path": "upper_C/glyphs_hw1_upper_C_0.png",
+        "orig_h": 25
+      },
+      {
+        "path": "upper_C/glyphs_hw_upper_C_0.png",
+        "orig_h": 29
+      },
+      {
+        "path": "upper_C/glyphs_upper_C_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_C/glyphs_upper_C_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_C/upper_C_0.png",
+        "orig_h": null
+      }
+    ],
+    "D": [
+      {
+        "path": "upper_D/glyphs_hw1_upper_D_0.png",
+        "orig_h": 18
+      },
+      {
+        "path": "upper_D/glyphs_hw_upper_D_0.png",
+        "orig_h": 20
+      }
+    ],
+    "E": [
+      {
+        "path": "upper_E/glyphs_hw1_upper_E_0.png",
+        "orig_h": 17
+      },
+      {
+        "path": "upper_E/glyphs_hw1_upper_E_1.png",
+        "orig_h": 15
+      },
+      {
+        "path": "upper_E/glyphs_hw1_upper_E_2.png",
+        "orig_h": 17
+      },
+      {
+        "path": "upper_E/glyphs_hw_upper_E_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "upper_E/glyphs_hw_upper_E_1.png",
+        "orig_h": 18
+      },
+      {
+        "path": "upper_E/glyphs_hw_upper_E_2.png",
+        "orig_h": 22
+      }
+    ],
+    "F": [
+      {
+        "path": "upper_F/glyphs_hw1_upper_F_0.png",
+        "orig_h": 29
+      },
+      {
+        "path": "upper_F/glyphs_hw_upper_F_0.png",
+        "orig_h": 34
+      }
+    ],
+    "G": [
+      {
+        "path": "upper_G/glyphs_hw1_upper_G_0.png",
+        "orig_h": 19
+      },
+      {
+        "path": "upper_G/glyphs_hw_upper_G_0.png",
+        "orig_h": 22
+      },
+      {
+        "path": "upper_G/glyphs_upper_G_1.png",
+        "orig_h": null
+      }
+    ],
+    "H": [
+      {
+        "path": "upper_H/glyphs_hw1_upper_H_0.png",
+        "orig_h": 19
+      },
+      {
+        "path": "upper_H/glyphs_hw1_upper_H_1.png",
+        "orig_h": 21
+      },
+      {
+        "path": "upper_H/glyphs_hw_upper_H_0.png",
+        "orig_h": 22
+      }
+    ],
+    "J": [
+      {
+        "path": "upper_J/glyphs_hw_upper_J_0.png",
+        "orig_h": 22
+      }
+    ],
+    "L": [
+      {
+        "path": "upper_L/glyphs_hw1_upper_L_0.png",
+        "orig_h": 23
+      },
+      {
+        "path": "upper_L/glyphs_hw_upper_L_0.png",
+        "orig_h": 26
+      }
+    ],
+    "M": [
+      {
+        "path": "upper_M/glyphs_hw1_upper_M_0.png",
+        "orig_h": 24
+      },
+      {
+        "path": "upper_M/glyphs_hw_upper_M_0.png",
+        "orig_h": 30
+      }
+    ],
+    "N": [
+      {
+        "path": "upper_N/glyphs_hw1_upper_N_0.png",
+        "orig_h": 28
+      },
+      {
+        "path": "upper_N/glyphs_hw_upper_N_0.png",
+        "orig_h": 34
+      }
+    ],
+    "O": [
+      {
+        "path": "upper_O/glyphs_hw1_upper_O_0.png",
+        "orig_h": 23
+      },
+      {
+        "path": "upper_O/glyphs_hw1_upper_O_1.png",
+        "orig_h": 21
+      },
+      {
+        "path": "upper_O/glyphs_hw1_upper_O_2.png",
+        "orig_h": 33
+      },
+      {
+        "path": "upper_O/glyphs_hw1_upper_O_3.png",
+        "orig_h": 29
+      },
+      {
+        "path": "upper_O/glyphs_hw_upper_O_0.png",
+        "orig_h": 34
+      },
+      {
+        "path": "upper_O/glyphs_hw_upper_O_1.png",
+        "orig_h": 35
+      },
+      {
+        "path": "upper_O/glyphs_hw_upper_O_2.png",
+        "orig_h": 35
+      },
+      {
+        "path": "upper_O/glyphs_hw_upper_O_3.png",
+        "orig_h": 32
+      },
+      {
+        "path": "upper_O/glyphs_upper_O_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_O/glyphs_upper_O_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_O/upper_O_0.png",
+        "orig_h": null
+      }
+    ],
+    "P": [
+      {
+        "path": "upper_P/glyphs_hw1_upper_P_0.png",
+        "orig_h": 36
+      },
+      {
+        "path": "upper_P/glyphs_hw_upper_P_0.png",
+        "orig_h": 38
+      },
+      {
+        "path": "upper_P/glyphs_upper_P_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_P/glyphs_upper_P_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_P/glyphs_upper_P_2.png",
+        "orig_h": null
+      }
+    ],
+    "Q": [
+      {
+        "path": "upper_Q/glyphs_hw1_upper_Q_0.png",
+        "orig_h": 41
+      },
+      {
+        "path": "upper_Q/glyphs_hw_upper_Q_0.png",
+        "orig_h": 43
+      }
+    ],
+    "R": [
+      {
+        "path": "upper_R/glyphs_hw1_upper_R_0.png",
+        "orig_h": 41
+      },
+      {
+        "path": "upper_R/glyphs_hw1_upper_R_1.png",
+        "orig_h": 29
+      },
+      {
+        "path": "upper_R/glyphs_hw_upper_R_0.png",
+        "orig_h": 44
+      },
+      {
+        "path": "upper_R/glyphs_hw_upper_R_1.png",
+        "orig_h": 32
+      }
+    ],
+    "S": [
+      {
+        "path": "upper_S/glyphs_hw1_upper_S_0.png",
+        "orig_h": 32
+      },
+      {
+        "path": "upper_S/glyphs_hw_upper_S_0.png",
+        "orig_h": 34
+      },
+      {
+        "path": "upper_S/upper_S_0.png",
+        "orig_h": null
+      }
+    ],
+    "T": [
+      {
+        "path": "upper_T/glyphs_hw1_upper_T_0.png",
+        "orig_h": 39
+      },
+      {
+        "path": "upper_T/glyphs_hw1_upper_T_1.png",
+        "orig_h": 30
+      },
+      {
+        "path": "upper_T/glyphs_hw_upper_T_0.png",
+        "orig_h": 43
+      }
+    ],
+    "U": [
+      {
+        "path": "upper_U/glyphs_hw1_upper_U_0.png",
+        "orig_h": 34
+      },
+      {
+        "path": "upper_U/glyphs_hw1_upper_U_1.png",
+        "orig_h": 31
+      },
+      {
+        "path": "upper_U/glyphs_hw_upper_U_0.png",
+        "orig_h": 37
+      },
+      {
+        "path": "upper_U/glyphs_hw_upper_U_1.png",
+        "orig_h": 35
+      },
+      {
+        "path": "upper_U/glyphs_upper_U_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_U/glyphs_upper_U_1.png",
+        "orig_h": null
+      }
+    ],
+    "V": [
+      {
+        "path": "upper_V/glyphs_hw1_upper_V_0.png",
+        "orig_h": 27
+      },
+      {
+        "path": "upper_V/glyphs_hw_upper_V_0.png",
+        "orig_h": 31
+      },
+      {
+        "path": "upper_V/glyphs_upper_V_0.png",
+        "orig_h": null
+      }
+    ],
+    "W": [
+      {
+        "path": "upper_W/glyphs_hw1_upper_W_0.png",
+        "orig_h": 25
+      },
+      {
+        "path": "upper_W/glyphs_hw_upper_W_0.png",
+        "orig_h": 32
+      },
+      {
+        "path": "upper_W/upper_W_0.png",
+        "orig_h": 23
+      }
+    ],
+    "X": [
+      {
+        "path": "upper_X/glyphs_hw1_upper_X_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "upper_X/glyphs_hw_upper_X_0.png",
+        "orig_h": 29
+      }
+    ],
+    "Y": [
+      {
+        "path": "upper_Y/glyphs_hw1_upper_Y_0.png",
+        "orig_h": 27
+      },
+      {
+        "path": "upper_Y/glyphs_hw_upper_Y_0.png",
+        "orig_h": 31
+      },
+      {
+        "path": "upper_Y/glyphs_upper_Y_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_Y/glyphs_upper_Y_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_Y/glyphs_upper_Y_3.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_Y/glyphs_upper_Y_4.png",
+        "orig_h": null
+      }
+    ],
+    "Z": [
+      {
+        "path": "upper_Z/glyphs_hw1_upper_Z_0.png",
+        "orig_h": 28
+      },
+      {
+        "path": "upper_Z/glyphs_hw_upper_Z_0.png",
+        "orig_h": 32
+      },
+      {
+        "path": "upper_Z/glyphs_upper_Z_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_Z/upper_Z_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "upper_Z/upper_Z_1.png",
+        "orig_h": null
+      }
+    ],
+    "[": [
+      {
+        "path": "u005b/glyphs_lbracket_0.png",
+        "orig_h": null
+      }
+    ],
+    "a": [
+      {
+        "path": "a/glyphs_a_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "a/glyphs_a_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "a/glyphs_hw1_a_0.png",
+        "orig_h": 20
+      },
+      {
+        "path": "a/glyphs_hw_a_0.png",
+        "orig_h": 23
+      },
+      {
+        "path": "a/a_0.png",
+        "orig_h": null
+      }
+    ],
+    "b": [
+      {
+        "path": "b/glyphs_b_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "b/glyphs_b_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "b/glyphs_b_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "b/glyphs_hw1_b_0.png",
+        "orig_h": 41
+      },
+      {
+        "path": "b/glyphs_hw_b_0.png",
+        "orig_h": 43
+      }
+    ],
+    "c": [
+      {
+        "path": "c/glyphs_hw1_c_0.png",
+        "orig_h": 22
+      },
+      {
+        "path": "c/glyphs_hw_c_0.png",
+        "orig_h": 25
+      }
+    ],
+    "d": [
+      {
+        "path": "d/glyphs_d_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "d/glyphs_d_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "d/glyphs_hw1_d_0.png",
+        "orig_h": 41
+      },
+      {
+        "path": "d/glyphs_hw_d_0.png",
+        "orig_h": 44
+      }
+    ],
+    "e": [
+      {
+        "path": "e/glyphs_e_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "e/glyphs_e_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "e/glyphs_e_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "e/glyphs_hw1_e_0.png",
+        "orig_h": 27
+      },
+      {
+        "path": "e/glyphs_hw1_e_1.png",
+        "orig_h": 24
+      },
+      {
+        "path": "e/glyphs_hw1_e_2.png",
+        "orig_h": 26
+      },
+      {
+        "path": "e/glyphs_hw_e_0.png",
+        "orig_h": 29
+      },
+      {
+        "path": "e/glyphs_hw_e_1.png",
+        "orig_h": 26
+      },
+      {
+        "path": "e/glyphs_hw_e_2.png",
+        "orig_h": 28
+      }
+    ],
+    "f": [
+      {
+        "path": "f/glyphs_f_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "f/glyphs_f_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "f/glyphs_f_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "f/glyphs_hw1_f_0.png",
+        "orig_h": 40
+      },
+      {
+        "path": "f/glyphs_hw_f_0.png",
+        "orig_h": 44
+      }
+    ],
+    "g": [
+      {
+        "path": "g/glyphs_g_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "g/glyphs_hw1_g_0.png",
+        "orig_h": 38
+      },
+      {
+        "path": "g/glyphs_hw_g_0.png",
+        "orig_h": 40
+      },
+      {
+        "path": "g/g_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "g/g_1.png",
+        "orig_h": null
+      }
+    ],
+    "h": [
+      {
+        "path": "h/glyphs_h_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "h/glyphs_h_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "h/glyphs_h_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "h/glyphs_hw1_h_0.png",
+        "orig_h": 43
+      },
+      {
+        "path": "h/glyphs_hw1_h_1.png",
+        "orig_h": 36
+      },
+      {
+        "path": "h/glyphs_hw_h_0.png",
+        "orig_h": 46
+      }
+    ],
+    "i": [
+      {
+        "path": "i/glyphs_hw1_i_0.png",
+        "orig_h": 49
+      },
+      {
+        "path": "i/glyphs_hw_i_0.png",
+        "orig_h": 20
+      },
+      {
+        "path": "i/glyphs_i_0.png",
+        "orig_h": null
+      }
+    ],
+    "j": [
+      {
+        "path": "j/glyphs_hw1_j_0.png",
+        "orig_h": 35
+      },
+      {
+        "path": "j/glyphs_hw_j_0.png",
+        "orig_h": 38
+      },
+      {
+        "path": "j/j_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "j/j_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "j/j_2.png",
+        "orig_h": 29
+      }
+    ],
+    "k": [
+      {
+        "path": "k/glyphs_hw1_k_0.png",
+        "orig_h": 25
+      },
+      {
+        "path": "k/glyphs_hw_k_0.png",
+        "orig_h": 53
+      },
+      {
+        "path": "k/glyphs_hw_k_1.png",
+        "orig_h": 38
+      },
+      {
+        "path": "k/glyphs_k_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "k/glyphs_k_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "k/glyphs_k_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "k/k_0.png",
+        "orig_h": 35
+      }
+    ],
+    "l": [
+      {
+        "path": "l/glyphs_hw1_l_0.png",
+        "orig_h": 35
+      },
+      {
+        "path": "l/glyphs_hw_l_0.png",
+        "orig_h": 38
+      }
+    ],
+    "m": [
+      {
+        "path": "m/glyphs_hw1_m_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "m/glyphs_hw_m_0.png",
+        "orig_h": 30
+      },
+      {
+        "path": "m/glyphs_m_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "m/glyphs_m_1.png",
+        "orig_h": null
+      }
+    ],
+    "mM": [
+      {
+        "path": "mM/glyphs_m_upper_M_0.png",
+        "orig_h": null
+      }
+    ],
+    "n": [
+      {
+        "path": "n/glyphs_hw1_n_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "n/glyphs_hw_n_0.png",
+        "orig_h": 30
+      },
+      {
+        "path": "n/glyphs_n_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "n/glyphs_n_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "n/glyphs_n_2.png",
+        "orig_h": null
+      },
+      {
+        "path": "n/glyphs_n_3.png",
+        "orig_h": null
+      }
+    ],
+    "o": [
+      {
+        "path": "o/glyphs_hw1_o_0.png",
+        "orig_h": 24
+      },
+      {
+        "path": "o/glyphs_hw1_o_1.png",
+        "orig_h": 18
+      },
+      {
+        "path": "o/glyphs_hw1_o_2.png",
+        "orig_h": 18
+      },
+      {
+        "path": "o/glyphs_hw1_o_3.png",
+        "orig_h": 20
+      },
+      {
+        "path": "o/glyphs_hw_o_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "o/glyphs_hw_o_1.png",
+        "orig_h": 22
+      },
+      {
+        "path": "o/glyphs_hw_o_2.png",
+        "orig_h": 21
+      },
+      {
+        "path": "o/glyphs_hw_o_3.png",
+        "orig_h": 22
+      }
+    ],
+    "od": [
+      {
+        "path": "od/glyphs_o_d_0.png",
+        "orig_h": null
+      }
+    ],
+    "p": [
+      {
+        "path": "p/glyphs_hw1_p_0.png",
+        "orig_h": 43
+      },
+      {
+        "path": "p/glyphs_hw_p_0.png",
+        "orig_h": 45
+      }
+    ],
+    "q": [
+      {
+        "path": "q/glyphs_hw1_q_0.png",
+        "orig_h": 52
+      },
+      {
+        "path": "q/glyphs_hw_q_0.png",
+        "orig_h": 54
+      },
+      {
+        "path": "q/glyphs_q_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "q/q_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "q/q_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "q/q_2.png",
+        "orig_h": null
+      }
+    ],
+    "r": [
+      {
+        "path": "r/glyphs_hw1_r_0.png",
+        "orig_h": 27
+      },
+      {
+        "path": "r/glyphs_hw_r_0.png",
+        "orig_h": 30
+      },
+      {
+        "path": "r/glyphs_hw_r_1.png",
+        "orig_h": 24
+      },
+      {
+        "path": "r/glyphs_r_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "r/glyphs_r_1.png",
+        "orig_h": null
+      },
+      {
+        "path": "r/glyphs_r_2.png",
+        "orig_h": null
+      }
+    ],
+    "s": [
+      {
+        "path": "s/glyphs_hw1_s_0.png",
+        "orig_h": 22
+      },
+      {
+        "path": "s/glyphs_s_0.png",
+        "orig_h": null
+      }
+    ],
+    "t": [
+      {
+        "path": "t/glyphs_hw1_t_0.png",
+        "orig_h": 46
+      },
+      {
+        "path": "t/glyphs_hw1_t_1.png",
+        "orig_h": 36
+      },
+      {
+        "path": "t/glyphs_hw_t_0.png",
+        "orig_h": 50
+      },
+      {
+        "path": "t/glyphs_t_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "t/t_0.png",
+        "orig_h": null
+      }
+    ],
+    "u": [
+      {
+        "path": "u/glyphs_hw1_u_0.png",
+        "orig_h": 26
+      },
+      {
+        "path": "u/glyphs_hw1_u_1.png",
+        "orig_h": 22
+      },
+      {
+        "path": "u/glyphs_hw_u_0.png",
+        "orig_h": 29
+      },
+      {
+        "path": "u/glyphs_hw_u_1.png",
+        "orig_h": 24
+      },
+      {
+        "path": "u/glyphs_u_0.png",
+        "orig_h": null
+      }
+    ],
+    "v": [
+      {
+        "path": "v/glyphs_hw1_v_0.png",
+        "orig_h": 25
+      },
+      {
+        "path": "v/glyphs_hw_v_0.png",
+        "orig_h": 27
+      },
+      {
+        "path": "v/glyphs_v_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "v/glyphs_v_1.png",
+        "orig_h": null
+      }
+    ],
+    "w": [
+      {
+        "path": "w/glyphs_w_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "w/glyphs_w_1.png",
+        "orig_h": null
+      }
+    ],
+    "x": [
+      {
+        "path": "x/glyphs_hw1_x_0.png",
+        "orig_h": 10
+      },
+      {
+        "path": "x/glyphs_hw_x_0.png",
+        "orig_h": 9
+      },
+      {
+        "path": "x/glyphs_x_0.png",
+        "orig_h": null
+      },
+      {
+        "path": "x/glyphs_x_1.png",
+        "orig_h": null
+      }
+    ],
+    "y": [
+      {
+        "path": "y/glyphs_hw1_y_0.png",
+        "orig_h": 36
+      },
+      {
+        "path": "y/glyphs_hw_y_0.png",
+        "orig_h": 24
+      },
+      {
+        "path": "y/glyphs_y_0.png",
+        "orig_h": null
+      }
+    ],
+    "z": [
+      {
+        "path": "z/glyphs_hw1_z_0.png",
+        "orig_h": 24
+      },
+      {
+        "path": "z/glyphs_hw_z_0.png",
+        "orig_h": 27
+      }
+    ],
+    "|": [
+      {
+        "path": "pipe/glyphs_pipe_0.png",
+        "orig_h": null
+      }
+    ],
+    "¢": [
+      {
+        "path": "u00a2/glyphs_¢_1.png",
+        "orig_h": null
+      }
+    ],
+    "¢$": [
+      {
+        "path": "u00a2u0024/glyphs_¢_dollar_0.png",
+        "orig_h": null
+      }
+    ],
+    "¥": [
+      {
+        "path": "u00a5/glyphs_¥_0.png",
+        "orig_h": null
+      }
+    ],
+    "°": [
+      {
+        "path": "u00b0/glyphs_°_0.png",
+        "orig_h": null
+      }
+    ],
+    "$": [
+      {
+        "path": "u0024/u0024_0.png",
+        "orig_h": 58
+      }
+    ],
+    "TH": [
+      {
+        "path": "TH/TH_0.png",
+        "orig_h": 35
+      }
+    ],
+    "th": [
+      {
+        "path": "th/th_1.png",
+        "orig_h": 40
+      }
+    ]
+  }
+}
