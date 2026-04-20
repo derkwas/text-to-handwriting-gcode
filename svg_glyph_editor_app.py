@@ -6,7 +6,7 @@ each glyph is an SVG file of cubic-Bezier subpaths in PDF-point space.
 
 Features
 --------
-- Load a glyph library (default: glyphs_vector)
+- Load a glyph library (default: ~/Desktop/handwriting_libraries/)
 - Scrollable grid of thumbnails, click to edit
 - Drag to translate, arrow keys nudge, scale slider
 - Font-guide overlay (reference letter behind the glyph)
@@ -91,8 +91,18 @@ def safe_label_dir(label: str) -> str:
     return s or "glyph"
 
 
+def libraries_root() -> Path:
+    """Where user handwriting libraries live — on the Desktop, outside
+    the code repo so the libraries can be kept private / excluded from
+    version control."""
+    return Path.home() / "Desktop" / "handwriting_libraries"
+
+
 def parse_library_paths(raw_values: list[str]) -> list[Path]:
-    base_dir = Path(__file__).resolve().parent
+    # Relative paths resolve against the libraries root (on the
+    # Desktop), not the code repo. Absolute paths pass through as-is so
+    # you can still point at arbitrary folders if you want.
+    root = libraries_root()
     out: list[Path] = []
     seen: set[str] = set()
     for raw in raw_values:
@@ -102,7 +112,7 @@ def parse_library_paths(raw_values: list[str]) -> list[Path]:
                 continue
             p = Path(part)
             if not p.is_absolute():
-                p = (base_dir / p).resolve()
+                p = (root / p).resolve()
             k = str(p)
             if k in seen:
                 continue
@@ -149,6 +159,20 @@ def load_variants(library_paths: list[Path]) -> list[GlyphVariant]:
 
 def is_single_lower_ascii(label: str) -> bool:
     return len(label) == 1 and "a" <= label <= "z"
+
+
+# Common ASCII characters that the coverage report surveys. Grouped for
+# display; space isn't listed since it's handled as an advance, not a
+# glyph.
+COMMON_CHARS: tuple[str, ...] = tuple(
+    list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    + list("abcdefghijklmnopqrstuvwxyz")
+    + list("0123456789")
+    + list(".,;:!?'\"`")
+    + list("()[]{}")
+    + list("-_/\\|")
+    + list("@#$%^&*+=~<>")
+)
 
 
 # ── Editor app ──────────────────────────────────────────────────────────────
@@ -248,6 +272,15 @@ class SvgGlyphEditorApp:
         top.pack(fill=tk.X, padx=8, pady=(8, 4))
         ttk.Button(top, text="Import PDF…",
                    command=self.on_import_pdf_clicked).pack(side=tk.LEFT)
+        ttk.Button(top, text="New",
+                   command=self.on_new_handwriting_clicked
+                   ).pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(top, text="Save",
+                   command=self.on_export_handwriting_clicked
+                   ).pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(top, text="Load",
+                   command=self.on_import_handwriting_clicked
+                   ).pack(side=tk.LEFT, padx=(4, 0))
         ttk.Label(top, text="  Libraries:").pack(side=tk.LEFT)
         self.libs_var = tk.StringVar(value=",".join(str(p) for p in self.library_paths))
         self.libs_entry = ttk.Entry(top, textvariable=self.libs_var, width=70)
@@ -389,6 +422,11 @@ class SvgGlyphEditorApp:
         self.root.bind("<Shift-Up>", _if_editor(lambda: self.nudge(0, -1.0)))
         self.root.bind("<Shift-Down>", _if_editor(lambda: self.nudge(0, 1.0)))
 
+        # F2 = coverage report. bind_all so it fires regardless of which
+        # tab or widget has focus (including the compose Text box).
+        self.root.bind_all("<F2>", self.on_show_coverage_report)
+        self._coverage_window: tk.Toplevel | None = None
+
     # ── Compose page ────────────────────────────────────────────────────
 
     def _build_compose_page(self, parent: ttk.Frame) -> None:
@@ -450,6 +488,19 @@ class SvgGlyphEditorApp:
                     ).grid(row=2, column=1, padx=(4, 12),
                            sticky="w", pady=(6, 0))
 
+        # Global font-size multiplier. 1.0 = glyph's natural size; smaller
+        # shrinks everything, larger blows it up. When ruled-paper is on
+        # the baselines still snap to blue rules regardless, so large
+        # sizes will encroach on the line above and small ones leave a
+        # gap — pick a size that fits the rule spacing (~20 pt cap).
+        ttk.Label(ctrl, text="Font size (×):").grid(
+            row=2, column=2, sticky="w", pady=(6, 0))
+        self.compose_font_size_var = tk.DoubleVar(value=1.0)
+        ttk.Spinbox(ctrl, from_=0.3, to=2.5, increment=0.05,
+                    textvariable=self.compose_font_size_var, width=6,
+                    ).grid(row=2, column=3, padx=(4, 0),
+                           sticky="w", pady=(6, 0))
+
         self.compose_random_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(ctrl, text="Randomize variants",
                         variable=self.compose_random_var
@@ -469,6 +520,53 @@ class SvgGlyphEditorApp:
                         variable=self.compose_ruled_paper_var
                         ).grid(row=5, column=0, columnspan=4,
                                sticky="w", pady=(2, 0))
+
+        # Naturalness panel. Each toggle is on by default; flip them off
+        # individually to isolate which effects you like. All amplitudes
+        # scale with the global strength multiplier. Reseed gives a new
+        # random draw for all jitters without changing text/settings.
+        nat = ttk.LabelFrame(left, text="Naturalness")
+        nat.pack(fill=tk.X, padx=8, pady=(4, 6))
+        self.nat_strength_var = tk.DoubleVar(value=1.0)
+        self.nat_pos_var = tk.BooleanVar(value=True)
+        self.nat_rot_var = tk.BooleanVar(value=True)
+        self.nat_size_var = tk.BooleanVar(value=True)
+        self.nat_drift_var = tk.BooleanVar(value=True)
+        self.nat_anticlump_var = tk.BooleanVar(value=True)
+
+        # Strength slider + live numeric readout. The readout StringVar
+        # is driven by a trace on the DoubleVar so it tracks in real
+        # time as the slider moves.
+        ttk.Label(nat, text="Strength:").grid(row=0, column=0, sticky="w",
+                                                padx=(4, 0), pady=(2, 0))
+        ttk.Scale(nat, from_=0.0, to=2.0,
+                  variable=self.nat_strength_var,
+                  orient="horizontal", length=140
+                  ).grid(row=0, column=1, sticky="ew", padx=(4, 4),
+                         pady=(2, 0))
+        self._nat_strength_disp = tk.StringVar(
+            value=f"{self.nat_strength_var.get():.2f}"
+        )
+        self.nat_strength_var.trace_add(
+            "write",
+            lambda *_: self._nat_strength_disp.set(
+                f"{self.nat_strength_var.get():.2f}"
+            ),
+        )
+        ttk.Label(nat, textvariable=self._nat_strength_disp, width=5
+                  ).grid(row=0, column=2, sticky="w", padx=(0, 4),
+                         pady=(2, 0))
+
+        for i, (var, label) in enumerate([
+            (self.nat_pos_var,       "Position jitter"),
+            (self.nat_rot_var,       "Rotation jitter"),
+            (self.nat_size_var,      "Size jitter"),
+            (self.nat_drift_var,     "Baseline drift (per line)"),
+            (self.nat_anticlump_var, "Anti-clump variant picking"),
+        ], start=1):
+            ttk.Checkbutton(nat, text=label, variable=var
+                            ).grid(row=i, column=0, columnspan=3,
+                                   sticky="w", padx=(4, 0))
 
         btn_row = ttk.Frame(left)
         btn_row.pack(fill=tk.X, padx=8, pady=(4, 6))
@@ -532,6 +630,9 @@ class SvgGlyphEditorApp:
         line_width_pt: float,
         line_height_pt: float | None = None,
         first_baseline_pt: float | None = None,
+        rng=None,
+        naturalness: dict | None = None,
+        font_size: float = 1.0,
     ) -> tuple[list[dict], float, float, set[str]]:
         """Compute per-glyph placements for `text`.
 
@@ -544,19 +645,33 @@ class SvgGlyphEditorApp:
 
         `line_height_pt` / `first_baseline_pt` override the defaults when
         snapping to external rules (e.g. blue college-rule lines).
+
+        `rng` / `naturalness` drive the per-glyph jitters (position, size,
+        rotation, darkness) and anti-clump variant picking. When rng is
+        None or naturalness flags are off the output is deterministic.
         """
-        import random
+        import random as _random
+
+        if rng is None:
+            rng = _random.Random(0)
+        nat = naturalness or {}
 
         all_orig_h = [v.orig_h for vs in variants_by_label.values()
                       for v in vs if v.orig_h is not None]
         ref_h = max(all_orig_h) if all_orig_h else 10.0
+        # Font size scales advances, kerning, and the free-form (non-
+        # ruled) line height so everything grows/shrinks together. When
+        # the caller supplied a line-height override (ruled paper) we
+        # leave it alone — baselines still land on blue rules regardless
+        # of font size.
         if line_height_pt is None:
-            line_height_pt = ref_h * 1.35
-        descender_reserve = ref_h * 0.25  # room below baseline per line
-        space_advance = ref_h * 0.32
-        kerning = ref_h * 0.05
+            line_height_pt = ref_h * 1.35 * font_size
+        descender_reserve = ref_h * 0.25 * font_size
+        space_advance = ref_h * 0.32 * font_size
+        kerning = ref_h * 0.05 * font_size
 
         rotate_counters: dict[str, int] = {}
+        last_picked_idx: dict[str, int] = {}
         loaded_cache: dict[Path, Glyph] = {}
 
         def _pick_variant(ch: str) -> GlyphVariant | None:
@@ -564,7 +679,19 @@ class SvgGlyphEditorApp:
             if not vs:
                 return None
             if self.compose_random_var.get():
-                return random.choice(vs)
+                # Random mode. With anti-clump on, avoid repeating the
+                # variant we just used for this char (when >1 exist).
+                if nat.get("anti_clump") and len(vs) > 1 and ch in last_picked_idx:
+                    candidates = [
+                        (j, cand) for j, cand in enumerate(vs)
+                        if j != last_picked_idx[ch]
+                    ]
+                    j, pick = rng.choice(candidates)
+                else:
+                    j = rng.randrange(len(vs))
+                    pick = vs[j]
+                last_picked_idx[ch] = j
+                return pick
             idx = rotate_counters.get(ch, 0)
             rotate_counters[ch] = idx + 1
             return vs[idx % len(vs)]
@@ -633,7 +760,7 @@ class SvgGlyphEditorApp:
             # Both offset_x and offset_y scale with user_scale so the drag
             # reads the same visual distance on the composed page as it did
             # in the editor.
-            scale = float(v.user_scale or 1.0)
+            scale = float(v.user_scale or 1.0) * font_size
             g_w = g.width * scale
             g_h = g.height * scale
             baseline_local_scaled = float(v.baseline if v.baseline is not None else g.height) * scale
@@ -645,6 +772,20 @@ class SvgGlyphEditorApp:
                 cur_x = 0.0
                 cur_baseline += line_height_pt
 
+            # Per-glyph naturalness draws. Amplitudes are scaled by the
+            # global strength multiplier — all of this is rendered below
+            # the content coordinates so flipping a flag off cleanly
+            # zeros its contribution.
+            strength = float(nat.get("strength", 1.0))
+            x_jitter = (rng.uniform(-0.6, 0.6) * strength
+                        if nat.get("pos") else 0.0)
+            y_jitter = (rng.uniform(-0.6, 0.6) * strength
+                        if nat.get("pos") else 0.0)
+            rot_deg = (rng.uniform(-1.8, 1.8) * strength
+                       if nat.get("rot") else 0.0)
+            size_mul = (1.0 + rng.uniform(-0.04, 0.04) * strength
+                        if nat.get("size") else 1.0)
+
             positions.append({
                 "x_pt": cur_x + off_x,
                 "y_baseline_pt": cur_baseline,
@@ -655,6 +796,10 @@ class SvgGlyphEditorApp:
                 "width": g_w,
                 "height": g_h,
                 "abs_path": v.abs_path,
+                "x_jitter_pt": x_jitter,
+                "y_jitter_pt": y_jitter,
+                "rot_deg": rot_deg,
+                "size_mul": size_mul,
             })
             cur_x += g_w + kerning
             max_x = max(max_x, cur_x)
@@ -678,6 +823,26 @@ class SvgGlyphEditorApp:
         if abs_path is not None:
             self.compose_centerline_cache[abs_path] = cl
         return cl
+
+    # ── Naturalness helpers ─────────────────────────────────────────────
+
+    @staticmethod
+    def _rotate_points(
+        points: list[tuple[float, float]],
+        cx: float, cy: float, rot_deg: float,
+    ) -> list[tuple[float, float]]:
+        """Rotate `points` about (cx, cy) by `rot_deg` degrees. Pivot is
+        chosen by the caller; typically the glyph's baseline centre so
+        the rotated baseline still sits on the rule."""
+        if abs(rot_deg) < 1e-6:
+            return points
+        rad = math.radians(rot_deg)
+        c, s = math.cos(rad), math.sin(rad)
+        return [
+            (c * (x - cx) - s * (y - cy) + cx,
+             s * (x - cx) + c * (y - cy) + cy)
+            for x, y in points
+        ]
 
     # Page-break markers. A line whose stripped content matches any of
     # these (case-insensitive) starts a new page. `\f` (form feed) is also
@@ -712,10 +877,18 @@ class SvgGlyphEditorApp:
         page_h_pt: float,
         margin_pt: float,
         px_per_pt: float,
+        rng=None,
+        naturalness: dict | None = None,
+        font_size: float = 1.0,
     ) -> tuple["Image.Image", list[dict], float, set[str],
                float, float, float]:
         """Render one page and return (img, positions, overflow_pt,
         missing_runtime, eff_margin_x_pt, eff_margin_y_pt, content_h_pt)."""
+        import random as _random
+        if rng is None:
+            rng = _random.Random(0)
+        nat = naturalness or {}
+
         RULE_LEFT_MARGIN_PT = 90.0
         RULE_LINE_SPACING_PT = 9.0 / 32.0 * 72.0
         RULE_FIRST_LINE_PT = 72.0
@@ -725,9 +898,10 @@ class SvgGlyphEditorApp:
             eff_margin_x_pt = RULE_LEFT_MARGIN_PT + RULE_LEFT_GAP_PT
             eff_margin_y_pt = 0.0
             line_height_override: float | None = RULE_LINE_SPACING_PT
-            first_baseline_override: float | None = (
-                RULE_FIRST_LINE_PT + RULE_LINE_SPACING_PT
-            )
+            # First baseline sits on the TOP blue rule — the "title"
+            # line. Ascenders lean into the 1" top margin above, which
+            # matches how people write on notebook paper.
+            first_baseline_override: float | None = RULE_FIRST_LINE_PT
             line_width_pt = max(10.0, page_w_pt - eff_margin_x_pt - margin_pt)
         else:
             eff_margin_x_pt = margin_pt
@@ -740,6 +914,8 @@ class SvgGlyphEditorApp:
             text, variants_by_label, line_width_pt,
             line_height_pt=line_height_override,
             first_baseline_pt=first_baseline_override,
+            rng=rng, naturalness=nat,
+            font_size=font_size,
         )
 
         W = max(1, int(round(page_w_pt * px_per_pt)))
@@ -779,32 +955,97 @@ class SvgGlyphEditorApp:
         ink_rgba = (20, 20, 20, 255)
         stroke_draw = ImageDraw.Draw(img)
 
+        # Per-line baseline drift. A gentle sinusoid across the page so a
+        # full line of text dips and rises organically instead of hugging
+        # the rule dead-straight. Parameters (amplitude/wavelength/phase)
+        # are sampled once per line and cached by un-jittered baseline y.
+        strength = float(nat.get("strength", 1.0))
+        drift_on = bool(nat.get("drift"))
+        drift_params: dict[float, tuple[float, float, float]] = {}
+
+        def _line_drift(line_y: float, x: float) -> float:
+            if not drift_on:
+                return 0.0
+            params = drift_params.get(line_y)
+            if params is None:
+                amp = rng.uniform(0.4, 1.2) * strength
+                if rng.random() < 0.5:
+                    amp = -amp
+                wavelength = rng.uniform(120.0, 260.0)
+                phase = rng.uniform(0.0, 2.0 * math.pi)
+                params = (amp, wavelength, phase)
+                drift_params[line_y] = params
+            amp, wavelength, phase = params
+            return amp * math.sin(2.0 * math.pi * x / wavelength + phase)
+
+        rot_on = bool(nat.get("rot"))
+        size_on = bool(nat.get("size"))
+        pos_on = bool(nat.get("pos"))
+
         for item in positions:
             g: Glyph = item["glyph"]
-            scale = float(item.get("scale", 1.0))
+            base_scale = float(item.get("scale", 1.0))
+            size_mul = float(item.get("size_mul", 1.0)) if size_on else 1.0
+            scale = base_scale * size_mul
             placed_h = float(item.get("height", g.height))
             abs_path = item.get("abs_path")
             baseline_local = item.get("baseline_local") or placed_h
+            rot_deg = float(item.get("rot_deg", 0.0)) if rot_on else 0.0
+            x_jitter = float(item.get("x_jitter_pt", 0.0)) if pos_on else 0.0
+            y_jitter = float(item.get("y_jitter_pt", 0.0)) if pos_on else 0.0
 
             centerlines = self._get_centerlines_cached(abs_path, g)
             if not centerlines:
                 continue
 
-            glyph_top_pt = float(item["y_baseline_pt"]) - float(baseline_local)
-            origin_x_pt = eff_margin_x_pt + float(item["x_pt"])
-            origin_y_pt = eff_margin_y_pt + glyph_top_pt
+            # Rotation pivot = (glyph-local) centre of the baseline. This
+            # keeps the baseline rotation-invariant so rotated glyphs
+            # still sit on the blue rule.
+            pivot_cx = g.width / 2.0
+            pivot_cy = baseline_local
 
+            line_y_key = float(item["y_baseline_pt"])
+            glyph_top_pt = line_y_key - float(baseline_local)
+            origin_x_pt = eff_margin_x_pt + float(item["x_pt"]) + x_jitter
+            origin_y_pt = eff_margin_y_pt + glyph_top_pt + y_jitter
+
+            # Build per-stroke final polylines in PAGE POINTS (post
+            # rotation+drift+wobble). These are cached on the item so
+            # SVG export can emit identical geometry without re-running
+            # the stochastic pipeline.
+            page_strokes_for_item: list[dict] = []
             for stroke in centerlines:
                 pts = stroke.get("points", [])
                 if len(pts) < 2:
                     continue
-                coords: list[tuple[float, float]] = []
-                for gx, gy in pts:
-                    px = (origin_x_pt + gx * scale) * px_per_pt
-                    py = (origin_y_pt + gy * scale) * px_per_pt
-                    coords.append((px, py))
-                if stroke.get("closed") and coords[0] != coords[-1]:
-                    coords.append(coords[0])
+
+                # Apply per-glyph rotation in glyph-local space first.
+                local_pts = (
+                    self._rotate_points(pts, pivot_cx, pivot_cy, rot_deg)
+                    if rot_deg else pts
+                )
+
+                # Transform to page coords (pt), applying drift per point
+                # (drift depends on x so long strokes curve slightly with
+                # the line).
+                page_pts: list[tuple[float, float]] = []
+                for gx, gy in local_pts:
+                    px_pt = origin_x_pt + gx * scale
+                    py_pt = origin_y_pt + gy * scale
+                    py_pt += _line_drift(line_y_key, px_pt)
+                    page_pts.append((px_pt, py_pt))
+
+                closed = bool(stroke.get("closed"))
+                if closed and page_pts[0] != page_pts[-1]:
+                    page_pts.append(page_pts[0])
+
+                page_strokes_for_item.append({
+                    "pts_pt": page_pts,
+                    "closed": closed,
+                })
+
+                # Raster render: to pixels, then draw.
+                coords = [(x * px_per_pt, y * px_per_pt) for x, y in page_pts]
                 stroke_draw.line(
                     coords, fill=ink_rgba,
                     width=thickness_px, joint="curve",
@@ -815,6 +1056,8 @@ class SvgGlyphEditorApp:
                         coords, fill=(220, 30, 30, 255),
                         width=1, joint="curve",
                     )
+
+            item["page_strokes"] = page_strokes_for_item
 
         return (img, positions, overflow_pt, missing_runtime,
                 eff_margin_x_pt, eff_margin_y_pt, content_h_pt)
@@ -865,6 +1108,18 @@ class SvgGlyphEditorApp:
         px_per_pt = RENDER_PX_PER_PT
         zoom = max(0.1, float(self.compose_scale_var.get()))
 
+        # Collect naturalness toggles once so _layout_text and
+        # _render_single_page both see the same settings. Flags map to
+        # short keys used throughout the render path.
+        naturalness = {
+            "strength":   max(0.0, float(self.nat_strength_var.get())),
+            "pos":        bool(self.nat_pos_var.get()),
+            "rot":        bool(self.nat_rot_var.get()),
+            "size":       bool(self.nat_size_var.get()),
+            "drift":      bool(self.nat_drift_var.get()),
+            "anti_clump": bool(self.nat_anticlump_var.get()),
+        }
+
         # Split text on page-break markers. Empty pages (e.g. trailing
         # break) are dropped so we don't render blank pages nobody asked
         # for.
@@ -881,13 +1136,26 @@ class SvgGlyphEditorApp:
         eff_margin_x_pt = margin_pt
         eff_margin_y_pt = margin_pt
 
+        font_size = max(0.05, float(self.compose_font_size_var.get()))
+
+        import random as _random
+        # Fresh seed every time Render is clicked so jitters shuffle
+        # automatically — no manual reseed button needed. SVG/PNG export
+        # read from the cached post-jitter geometry of this render, so
+        # the saved file still matches exactly what's on screen.
+        render_seed = _random.randint(1, 1_000_000_000)
         for page_idx, page_text in enumerate(page_texts):
+            page_rng = _random.Random(
+                (render_seed * 1_000_003 + page_idx) & 0xFFFFFFFF
+            )
             (img, positions, overflow_pt, missing_runtime,
              eff_margin_x_pt, eff_margin_y_pt, _content_h_pt) = (
                 self._render_single_page(
                     page_text, variants_by_label,
                     page_w_pt=PAGE_W_PT, page_h_pt=PAGE_H_PT,
                     margin_pt=margin_pt, px_per_pt=px_per_pt,
+                    rng=page_rng, naturalness=naturalness,
+                    font_size=font_size,
                 )
             )
             for p in positions:
@@ -1041,7 +1309,19 @@ class SvgGlyphEditorApp:
                 f'stroke-width="{thickness_pt:.3f}" '
                 f'stroke-linecap="round" stroke-linejoin="round">',
             ]
+            # Prefer the cached post-jitter polylines so plotter output
+            # matches what the user sees in the preview (rotation, drift,
+            # wobble, size, position). Fall back to recomputing from raw
+            # centerlines only if the layout predates this cache — e.g.
+            # loaded from an older on-disk state.
             for item in page_positions:
+                page_strokes = item.get("page_strokes")
+                if page_strokes:
+                    for stroke in page_strokes:
+                        d = _path_d(stroke["pts_pt"], bool(stroke.get("closed")))
+                        if d:
+                            parts.append(f'<path d="{d}"/>')
+                    continue
                 g: Glyph = item["glyph"]
                 sc = float(item.get("scale", 1.0))
                 placed_h = float(item.get("height", g.height))
@@ -1111,49 +1391,325 @@ class SvgGlyphEditorApp:
         self.library_paths = parse_library_paths([self.libs_var.get()])
         self.reload_variants()
 
+    # ── Handwriting save / load ─────────────────────────────────────────
+    #
+    # A .hwfont file is just a zip of the primary library folder: the
+    # per-character variant subfolders + index.json (which carries all
+    # the user_scale / offset / baseline edits). Using the zip format
+    # means the file survives fine if anything in this app breaks — you
+    # can always unzip it manually.
+
+    # ── Coverage report ─────────────────────────────────────────────────
+
+    def on_show_coverage_report(self, event=None) -> None:  # noqa: ARG002
+        """Open (or focus) a window listing every common ASCII
+        character and how many variants the current library has for it.
+        Bound to F2."""
+        existing = getattr(self, "_coverage_window", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.lift()
+                    existing.focus_set()
+                    return
+            except tk.TclError:
+                pass
+
+        win = tk.Toplevel(self.root)
+        win.title("Library coverage")
+        win.geometry("480x600")
+        self._coverage_window = win
+
+        def _on_close() -> None:
+            self._coverage_window = None
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", _on_close)
+        # Escape closes the window — common expectation for a popup.
+        win.bind("<Escape>", lambda _e: _on_close())
+
+        header = ttk.Label(win, text="", anchor="w", wraplength=460)
+        header.pack(padx=10, pady=(10, 4), fill=tk.X)
+
+        tree_frame = ttk.Frame(win)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 6))
+
+        columns = ("character", "count", "category")
+        tree = ttk.Treeview(tree_frame, columns=columns,
+                             show="headings", height=22)
+        tree.column("character", width=90, anchor="center")
+        tree.column("count", width=90, anchor="center")
+        tree.column("category", width=220, anchor="w")
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical",
+                             command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        tree.tag_configure("missing", background="#ffdcdc")
+        tree.tag_configure("sparse",  background="#fff2cc")
+
+        def _category(c: str) -> str:
+            if c.isupper():   return "Uppercase letter"
+            if c.islower():   return "Lowercase letter"
+            if c.isdigit():   return "Digit"
+            if c in ".,;:!?'\"`":
+                return "Punctuation"
+            if c in "()[]{}":
+                return "Bracket"
+            if c in "-_/\\|":
+                return "Dash / slash"
+            return "Symbol"
+
+        def _sort_by(col: str, reverse: bool) -> None:
+            items = [(tree.set(k, col), k) for k in tree.get_children("")]
+            if col == "count":
+                items.sort(key=lambda t: int(t[0]), reverse=reverse)
+            else:
+                items.sort(key=lambda t: t[0], reverse=reverse)
+            for index, (_, k) in enumerate(items):
+                tree.move(k, "", index)
+            tree.heading(col, command=lambda c=col, r=reverse:
+                          _sort_by(c, not r))
+
+        tree.heading("character", text="Character",
+                      command=lambda: _sort_by("character", False))
+        tree.heading("count", text="Variants",
+                      command=lambda: _sort_by("count", False))
+        tree.heading("category", text="Category",
+                      command=lambda: _sort_by("category", False))
+
+        def _populate() -> None:
+            by_label = self._variants_by_label()
+            tree.delete(*tree.get_children())
+            total = len(COMMON_CHARS)
+            have = sum(1 for c in COMMON_CHARS if c in by_label)
+            sparse = sum(
+                1 for c in COMMON_CHARS if len(by_label.get(c, [])) == 1
+            )
+            missing = total - have
+            header.config(text=(
+                f"{have} of {total} characters have variants  ·  "
+                f"{missing} missing  ·  {sparse} sparse (1 variant)"
+            ))
+            for c in COMMON_CHARS:
+                count = len(by_label.get(c, []))
+                if count == 0:
+                    tag = "missing"
+                elif count == 1:
+                    tag = "sparse"
+                else:
+                    tag = ""
+                tree.insert(
+                    "", tk.END,
+                    values=(c, count, _category(c)),
+                    tags=(tag,) if tag else (),
+                )
+            # Default sort: by count ascending so missing/sparse rows
+            # surface at the top.
+            _sort_by("count", False)
+
+        btn_row = ttk.Frame(win)
+        btn_row.pack(fill=tk.X, padx=10, pady=(0, 4))
+        ttk.Button(btn_row, text="Refresh",
+                    command=_populate).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="Close",
+                    command=_on_close).pack(side=tk.RIGHT)
+        ttk.Label(win, text="F2 toggles this window · Esc closes it",
+                   foreground="#888"
+                   ).pack(padx=10, pady=(0, 10), anchor="w")
+
+        _populate()
+
+    def on_new_handwriting_clicked(self) -> None:
+        """Start a fresh, empty handwriting library in its own folder.
+        The current library stays on disk — use the libs textbox or
+        Load handwriting to come back to it later."""
+        from tkinter.simpledialog import askstring
+
+        folder_name = askstring(
+            "New handwriting",
+            "Name for the new (empty) handwriting library:",
+            parent=self.root, initialvalue="my_handwriting",
+        )
+        if folder_name is None:
+            return
+        folder_name = folder_name.strip()
+        for bad in ("/", "\\", ":", "*", "?", "\"", "<", ">", "|"):
+            folder_name = folder_name.replace(bad, "_")
+        if not folder_name:
+            messagebox.showerror("Invalid name",
+                                  "Folder name can't be empty.")
+            return
+
+        root = libraries_root()
+        dest = root / folder_name
+        if dest.exists():
+            messagebox.showerror(
+                "Folder exists",
+                f"A folder named '{folder_name}' already exists in\n"
+                f"{root}\n"
+                "Pick a different name or delete it first.",
+            )
+            return
+
+        try:
+            dest.mkdir(parents=True)
+            # Seed an empty index so the loader treats it as a valid —
+            # just empty — library rather than failing on missing file.
+            (dest / "index.json").write_text(
+                '{"version": 3, "format": "svg", "source": null, "glyphs": {}}',
+                encoding="utf-8",
+            )
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("Create failed", str(ex))
+            return
+
+        self.libs_var.set(str(dest))
+        self.library_paths = parse_library_paths([str(dest)])
+        self.reload_variants()
+        self.compose_centerline_cache.clear()
+        self.status_var.set(f"Started new handwriting in {dest}")
+
+    def on_export_handwriting_clicked(self) -> None:
+        """Zip the primary library folder into a single .hwfont file."""
+        import zipfile
+
+        if not self.library_paths:
+            messagebox.showinfo("Nothing to save",
+                                 "No handwriting library is loaded.")
+            return
+        src = Path(self.library_paths[0])
+        if not src.is_dir():
+            messagebox.showerror(
+                "Save failed",
+                f"Library folder not found:\n{src}",
+            )
+            return
+
+        path_str = filedialog.asksaveasfilename(
+            parent=self.root, title="Save handwriting",
+            defaultextension=".hwfont",
+            initialfile=f"{src.name}.hwfont",
+            filetypes=[("Handwriting", "*.hwfont"), ("All files", "*.*")],
+        )
+        if not path_str:
+            return
+
+        try:
+            with zipfile.ZipFile(path_str, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file in src.rglob("*"):
+                    if not file.is_file():
+                        continue
+                    rel = file.relative_to(src)
+                    # Only include index.json and anything inside the
+                    # per-character subfolders. Loose files at root
+                    # (debug PNGs, scratch files) are dev noise and
+                    # shouldn't travel with the handwriting.
+                    if len(rel.parts) == 1 and rel.name != "index.json":
+                        continue
+                    zf.write(file, arcname=str(rel).replace("\\", "/"))
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("Save failed", str(ex))
+            return
+        self.status_var.set(f"Saved handwriting to {path_str}")
+
+    def on_import_handwriting_clicked(self) -> None:
+        """Pick a .hwfont, ask what to call the new library folder,
+        extract into it, and reload."""
+        import zipfile
+        from tkinter.simpledialog import askstring
+
+        path_str = filedialog.askopenfilename(
+            parent=self.root, title="Load handwriting",
+            filetypes=[("Handwriting", "*.hwfont"),
+                       ("Zip archive", "*.zip"),
+                       ("All files", "*.*")],
+        )
+        if not path_str:
+            return
+
+        src_file = Path(path_str)
+        default_name = src_file.stem
+        folder_name = askstring(
+            "Name the library",
+            "Folder name for this handwriting:",
+            parent=self.root, initialvalue=default_name,
+        )
+        if folder_name is None:
+            return
+        folder_name = folder_name.strip()
+        # Sanitize against path escapes. This is a folder NAME, not a
+        # path — flatten slashes and reject empties.
+        for bad in ("/", "\\", ":", "*", "?", "\"", "<", ">", "|"):
+            folder_name = folder_name.replace(bad, "_")
+        if not folder_name:
+            messagebox.showerror("Invalid name",
+                                  "Folder name can't be empty.")
+            return
+
+        root = libraries_root()
+        dest = root / folder_name
+        if dest.exists():
+            messagebox.showerror(
+                "Folder exists",
+                f"A folder named '{folder_name}' already exists in\n"
+                f"{root}\n"
+                "Pick a different name or delete the existing folder.",
+            )
+            return
+
+        try:
+            dest.mkdir(parents=True)
+            with zipfile.ZipFile(src_file, "r") as zf:
+                zf.extractall(dest)
+        except Exception as ex:  # noqa: BLE001
+            # Clean up the partial extraction so the name is free for
+            # another try.
+            import shutil
+            shutil.rmtree(dest, ignore_errors=True)
+            messagebox.showerror("Load failed", str(ex))
+            return
+
+        self.libs_var.set(str(dest))
+        self.library_paths = parse_library_paths([str(dest)])
+        self.reload_variants()
+        # Invalidate compose-side caches so the new library's glyphs
+        # aren't rendered with old centerline cache entries keyed off
+        # previous variant paths.
+        self.compose_centerline_cache.clear()
+        self.status_var.set(f"Loaded handwriting from {src_file.name}")
+
     def on_import_pdf_clicked(self) -> None:
-        """Pick a PDF, run OCR + vector extraction, then load the resulting
-        glyph library. The pipeline takes ~5-15 s on a single page — we run
-        it synchronously with live status updates instead of threading so we
-        don't have to fight Tk's single-threaded widget model."""
-        base_dir = Path(__file__).resolve().parent
-        pdf_path_str = filedialog.askopenfilename(
+        """Pick one or more PDFs and APPEND them to the current library.
+
+        Multi-select is enabled so the user can grab a whole batch at
+        once — all of them go into the same folder, new variants
+        numbered continuing from the existing `_N` suffixes so nothing
+        on disk gets overwritten. Normalize runs once at the end of the
+        batch (not per-PDF) since it's expensive and the result is the
+        same either way."""
+        pdf_paths_tuple = filedialog.askopenfilenames(
             parent=self.root,
-            title="Select handwriting PDF",
+            title="Select handwriting PDF(s) — multi-select supported",
             filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
-            initialdir=str(base_dir / "handwriting_raw"),
+            initialdir=str(Path.home() / "Desktop"),
         )
-        if not pdf_path_str:
+        if not pdf_paths_tuple:
             return
-        pdf_path = Path(pdf_path_str)
+        pdf_paths = [Path(p) for p in pdf_paths_tuple]
 
-        default_out = base_dir / "glyphs_vector"
-        out_dir_str = filedialog.askdirectory(
-            parent=self.root,
-            title="Output library folder (new or existing; existing glyphs will be merged)",
-            initialdir=str(default_out if default_out.exists() else base_dir),
-            mustexist=False,
-        )
-        if not out_dir_str:
-            return
-        out_dir = Path(out_dir_str)
+        # Target = current library folder. If none, fall back to a
+        # `default` library under the Desktop libraries root so nothing
+        # lands inside the code repo.
+        if self.library_paths:
+            out_dir = Path(self.library_paths[0])
+        else:
+            out_dir = libraries_root() / "default"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        # If the user picked an existing library with glyphs, warn about
-        # merge semantics (new variants get appended, same-label variants
-        # get higher _N suffixes; filenames won't collide because we read
-        # the counter from an empty dict — so current importer OVERWRITES
-        # files starting from _0). Offer to write into a subfolder instead.
-        existing_index = out_dir / "index.json"
-        if existing_index.exists():
-            if not messagebox.askyesno(
-                "Overwrite warning",
-                f"{out_dir} already contains an index.json.\n\n"
-                "Importing will overwrite per-label SVGs starting from _0 and "
-                "replace the index. Continue?",
-            ):
-                return
-
-        self._set_status(f"Importing {pdf_path.name}…")
+        total_added = 0
+        total_labels_final = 0
         self.root.config(cursor="wait")
         try:
             from pdf_to_vector_glyphs import import_pdf_to_library
@@ -1161,28 +1717,47 @@ class SvgGlyphEditorApp:
             def _progress(msg: str) -> None:
                 self._set_status(msg)
 
-            stats = import_pdf_to_library(
-                pdf_path=pdf_path,
-                out_dir=out_dir,
-                progress=_progress,
-            )
-        except Exception as ex:  # noqa: BLE001
-            self.root.config(cursor="")
-            self._set_status("")
-            messagebox.showerror(
-                "Import failed",
-                f"{pdf_path.name}\n\n{type(ex).__name__}: {ex}",
-            )
-            return
+            for i, pdf_path in enumerate(pdf_paths, start=1):
+                self._set_status(
+                    f"Importing ({i}/{len(pdf_paths)}) {pdf_path.name}…"
+                )
+                try:
+                    stats = import_pdf_to_library(
+                        pdf_path=pdf_path,
+                        out_dir=out_dir,
+                        progress=_progress,
+                        merge=True,
+                        normalize=False,
+                    )
+                except Exception as ex:  # noqa: BLE001
+                    messagebox.showerror(
+                        "Import failed",
+                        f"{pdf_path.name}\n\n{type(ex).__name__}: {ex}",
+                    )
+                    continue
+                total_added += stats["total_written"]
+                total_labels_final = stats["n_unique_labels"]
+
+            # Normalize once after the batch so all newly-added glyphs
+            # share the same proportions as the guide font. Skipping the
+            # per-PDF pass saved real time on multi-file imports.
+            if total_added > 0:
+                self._set_status("Normalizing glyphs to guide font…")
+                try:
+                    from svg_glyph import normalize_library
+                    normalize_library(out_dir, progress=_progress)
+                except Exception as ex:  # noqa: BLE001
+                    self._set_status(f"Normalize skipped: {ex}")
         finally:
             self.root.config(cursor="")
 
         self._set_status(
-            f"Imported {stats['total_written']} glyphs "
-            f"({stats['n_unique_labels']} labels) from {pdf_path.name}"
+            f"Added {total_added} glyphs from {len(pdf_paths)} PDF(s); "
+            f"library now has {total_labels_final} unique labels."
         )
 
-        # Point the library entry at the new folder and reload.
+        # Point at the target dir (in case this was the first import) and
+        # reload the grid so the new variants show up immediately.
         self.libs_var.set(str(out_dir))
         self.library_paths = parse_library_paths([str(out_dir)])
         self.reload_variants()
@@ -1920,8 +2495,28 @@ def main() -> None:
                     help="Glyph library folder(s). Repeat and/or comma-separate.")
     args = ap.parse_args()
 
-    raw = args.glyphs if args.glyphs is not None else ["glyphs_vector"]
-    libs = parse_library_paths(raw)
+    if args.glyphs is not None:
+        libs = parse_library_paths(args.glyphs)
+    else:
+        # No explicit --glyphs: use whatever already lives under the
+        # Desktop libraries root. If nothing's there yet, start with an
+        # empty `default/` so the app has something to point at.
+        root = libraries_root()
+        root.mkdir(parents=True, exist_ok=True)
+        existing = sorted(
+            p for p in root.iterdir()
+            if p.is_dir() and (p / "index.json").exists()
+        )
+        if existing:
+            libs = [existing[0]]
+        else:
+            default = root / "default"
+            default.mkdir(parents=True, exist_ok=True)
+            (default / "index.json").write_text(
+                '{"version": 3, "format": "svg", "source": null, "glyphs": {}}',
+                encoding="utf-8",
+            )
+            libs = [default]
     if not libs:
         raise SystemExit("No glyph libraries specified.")
 

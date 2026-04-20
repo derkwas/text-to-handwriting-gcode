@@ -472,6 +472,8 @@ def import_pdf_to_library(
     psm: int = 6,
     pages: list[int] | None = None,
     progress=None,
+    merge: bool = False,
+    normalize: bool = True,
 ) -> dict:
     """Run the full OCR + vector extraction pipeline and write a glyph library.
 
@@ -485,6 +487,16 @@ def import_pdf_to_library(
             "n_unique_labels",
             "index",                   # the written index dict
         }
+
+    If `merge` is True and `out_dir/index.json` already exists, the new
+    glyphs are appended to the existing library: per-label filename
+    counters start at the highest existing `_N`, and existing entries
+    survive in the merged index. Otherwise the output dir is written
+    fresh (current overwriting behaviour).
+
+    `normalize=False` skips the final normalize_library pass — useful
+    when batching multiple PDFs in a row so normalize only runs once
+    at the end.
     """
     def _say(msg: str) -> None:
         if progress is not None:
@@ -502,6 +514,10 @@ def import_pdf_to_library(
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Seed the index + per-label counters from the existing library
+    # when merging. Counters come from the highest `_N` present in each
+    # label's recorded paths so new writes never collide with existing
+    # files on disk.
     total_index: dict = {
         "version": 3,
         "format": "svg",
@@ -509,6 +525,41 @@ def import_pdf_to_library(
         "glyphs": {},
     }
     counts: dict[str, int] = {}
+    existing_index_path = out_dir / "index.json"
+    if merge and existing_index_path.exists():
+        try:
+            existing = json.loads(
+                existing_index_path.read_text(encoding="utf-8")
+            )
+        except Exception:  # noqa: BLE001
+            existing = None
+        if isinstance(existing, dict) and isinstance(
+            existing.get("glyphs"), dict
+        ):
+            total_index["glyphs"] = existing["glyphs"]
+            # Track combined sources so you can still see what was
+            # imported.
+            prior_source = existing.get("source")
+            sources: list[str] = []
+            if isinstance(prior_source, list):
+                sources.extend(str(s) for s in prior_source)
+            elif prior_source:
+                sources.append(str(prior_source))
+            sources.append(str(pdf_path))
+            total_index["source"] = sources
+            # Derive counters from existing filenames like
+            # "A/A_3.svg" → counts["A"] = 4 (next index will be 4).
+            for entries in existing["glyphs"].values():
+                for e in entries:
+                    p = e.get("path", "")
+                    stem = Path(p).stem  # "A_3"
+                    if "_" in stem:
+                        prefix, _, tail = stem.rpartition("_")
+                        try:
+                            n = int(tail)
+                        except ValueError:
+                            continue
+                        counts[prefix] = max(counts.get(prefix, 0), n + 1)
     total_boxes = 0
     total_subpaths = 0
     total_written = 0
@@ -565,12 +616,13 @@ def import_pdf_to_library(
     # Auto-normalise: rewrite every glyph so its proportions match the
     # guide font. Runs before "Done" so the library is plotter-ready on
     # first load — no manual Normalize click required.
-    _say("Normalizing glyphs to guide font…")
-    try:
-        from svg_glyph import normalize_library
-        normalize_library(out_dir, progress=_say)
-    except Exception as ex:  # noqa: BLE001
-        _say(f"Normalize skipped: {ex}")
+    if normalize:
+        _say("Normalizing glyphs to guide font…")
+        try:
+            from svg_glyph import normalize_library
+            normalize_library(out_dir, progress=_say)
+        except Exception as ex:  # noqa: BLE001
+            _say(f"Normalize skipped: {ex}")
 
     _say("Done.")
 
