@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -219,10 +220,54 @@ class CharSlot:
     x1: float
     y1: float
     subpaths: list[Subpath]
+    # Line baseline in PDF points (absolute page coords). Attached during
+    # assignment by clustering OCR boxes into lines and taking the median
+    # bottom-y per line. Non-descender chars dominate the median so it
+    # locks onto the real writing baseline; descender chars in the same
+    # cluster have bottom > baseline and get the right offset for free.
+    baseline_pt: float | None = None
 
     def contains(self, cx: float, cy: float, pad: float = 0.0) -> bool:
         return (self.x0 - pad) <= cx <= (self.x1 + pad) \
            and (self.y0 - pad) <= cy <= (self.y1 + pad)
+
+
+def _line_baselines_pt(
+    boxes: list,
+    pixel_to_pt: float,
+    tol_frac: float = 0.5,
+) -> dict[int, float]:
+    """Cluster OCR boxes into lines by bottom-y proximity and return
+    {box_index: baseline_y_pt}. The per-line baseline is the median of
+    bottom-y across the cluster — descender chars sit ABOVE (larger y)
+    the median, so the median picks out where non-descender characters
+    rest, i.e. the actual writing baseline."""
+    boxes = list(boxes)
+    if not boxes:
+        return {}
+    heights = [b.height for b in boxes if b.height > 0]
+    if not heights:
+        return {i: b.bottom * pixel_to_pt for i, b in enumerate(boxes)}
+    med_h = float(statistics.median(heights))
+    tol_px = med_h * tol_frac
+
+    indexed = sorted(enumerate(boxes), key=lambda ib: ib[1].bottom)
+    clusters: list[list[tuple[int, object]]] = [[indexed[0]]]
+    for idx_b in indexed[1:]:
+        _idx, b = idx_b
+        last_median = statistics.median([x[1].bottom for x in clusters[-1]])
+        if abs(b.bottom - last_median) <= tol_px:
+            clusters[-1].append(idx_b)
+        else:
+            clusters.append([idx_b])
+
+    out: dict[int, float] = {}
+    for cluster in clusters:
+        baseline_px = float(statistics.median([x[1].bottom for x in cluster]))
+        baseline_pt = baseline_px * pixel_to_pt
+        for idx, _b in cluster:
+            out[idx] = baseline_pt
+    return out
 
 
 def assign_subpaths(
@@ -235,8 +280,10 @@ def assign_subpaths(
     `boxes` are OCR CharBoxes with pixel-space .left/.top/.right/.bottom
     (top-left origin). We rescale by `pixel_to_pt` to match PDF points.
     """
+    boxes_list = list(boxes)
+    baselines_pt = _line_baselines_pt(boxes_list, pixel_to_pt)
     slots: list[CharSlot] = []
-    for b in boxes:
+    for i, b in enumerate(boxes_list):
         slots.append(CharSlot(
             char=b.char,
             x0=b.left * pixel_to_pt,
@@ -244,6 +291,7 @@ def assign_subpaths(
             x1=b.right * pixel_to_pt,
             y1=b.bottom * pixel_to_pt,
             subpaths=[],
+            baseline_pt=baselines_pt.get(i),
         ))
 
     # First pass: strict containment.
@@ -294,19 +342,47 @@ def _median_box_size(slots: list[CharSlot]) -> float:
 
 # ── Glyph SVG writing ───────────────────────────────────────────────────────
 
+# Characters readers expect to extend below the writing baseline. If the
+# line-baseline clustering puts the baseline too close to the glyph's own
+# bottom (small or zero measured descender), we clamp the baseline so the
+# tail still visibly hangs below. Without this, a tall hand-drawn 'q'
+# whose tail is subtle can end up floating above the x-line.
+_DESCENDER_CHARS: frozenset[str] = frozenset({"g", "j", "p", "q", "y", "$"})
+_MIN_DESCENDER_FRAC: float = 0.28
+
+
+def _normalize_descender(
+    label: str,
+    glyph_h: float,
+    baseline_local: float | None,
+) -> float | None:
+    if baseline_local is None or glyph_h <= 0:
+        return baseline_local
+    if label not in _DESCENDER_CHARS:
+        return baseline_local
+    measured_desc = glyph_h - baseline_local
+    min_desc = glyph_h * _MIN_DESCENDER_FRAC
+    if measured_desc < min_desc:
+        return max(0.0, glyph_h - min_desc)
+    return baseline_local
+
+
 def write_glyph_svg(
     slot: CharSlot,
     out_path: Path,
-) -> tuple[float, float]:
+) -> tuple[float, float, float | None]:
     """Write one glyph SVG. Coordinates are translated so the glyph's
-    alpha top-left is at (0, 0). Returns (width, height) in PDF points."""
+    alpha top-left is at (0, 0). Returns (width, height, baseline_local)
+    in PDF points. `baseline_local` is the y (in the glyph's local frame)
+    where the line's writing baseline sits — None if we couldn't infer
+    a baseline for this slot."""
     # Union bbox of the assigned subpaths (tighter than the OCR bbox).
     xs0, ys0, xs1, ys1 = [], [], [], []
     for sp in slot.subpaths:
         xs0.append(sp.bbox[0]); ys0.append(sp.bbox[1])
         xs1.append(sp.bbox[2]); ys1.append(sp.bbox[3])
     if not xs0:
-        return 0.0, 0.0
+        return 0.0, 0.0, None
     x0, y0 = min(xs0), min(ys0)
     x1, y1 = max(xs1), max(ys1)
     w = max(0.1, x1 - x0)
@@ -327,7 +403,25 @@ def write_glyph_svg(
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(svg, encoding="utf-8")
-    return w, h
+
+    # Local baseline y = (absolute line baseline) - (glyph top in PDF coords).
+    # For non-descender chars it equals h (baseline == bottom of ink).
+    # For descenders (g, y, $, …) it's < h, so ink extends below in local space.
+    baseline_local: float | None = None
+    if slot.baseline_pt is not None:
+        baseline_local = float(slot.baseline_pt) - float(y0)
+        # Clamp: baseline can't sit above the glyph's top, and shouldn't be
+        # wildly beyond its bottom either (would indicate a line-detection
+        # failure). A small downward tolerance past `h` is fine — it just
+        # means the subpath bbox ended slightly above baseline.
+        if baseline_local < 0:
+            baseline_local = 0.0
+        elif baseline_local > h * 1.5:
+            baseline_local = None  # suspect — fall back to bottom-align
+    # Guarantee a minimum descender for descender-class chars so their
+    # tails clearly hang below the baseline instead of floating on it.
+    baseline_local = _normalize_descender(slot.char, h, baseline_local)
+    return w, h, baseline_local
 
 
 # ── Index writing ───────────────────────────────────────────────────────────
@@ -353,7 +447,7 @@ def build_index(
         idx = counts[label_dir] - 1
         filename = f"{label_dir}_{idx}.svg"
         out = glyphs_root / label_dir / filename
-        w, h = write_glyph_svg(slot, out)
+        w, h, baseline_local = write_glyph_svg(slot, out)
         if w == 0.0 and h == 0.0:
             counts[label_dir] -= 1
             continue
@@ -363,8 +457,133 @@ def build_index(
             "orig_w": w,
             "bbox_pdf": [slot.x0, slot.y0, slot.x1, slot.y1],
         }
+        if baseline_local is not None:
+            entry["baseline"] = baseline_local
         index["glyphs"].setdefault(label, []).append(entry)
     return index
+
+
+# ── Library import (reusable from CLI or GUI) ───────────────────────────────
+
+def import_pdf_to_library(
+    pdf_path: Path,
+    out_dir: Path,
+    dpi: int = 300,
+    psm: int = 6,
+    pages: list[int] | None = None,
+    progress=None,
+) -> dict:
+    """Run the full OCR + vector extraction pipeline and write a glyph library.
+
+    `progress`, if given, is a callable(message: str) invoked between stages
+    so a GUI caller can update a status label. Returns a summary dict:
+        {
+            "out_dir", "index_path",
+            "pages": [page_idx, ...],
+            "total_boxes", "total_subpaths",
+            "total_written",           # number of glyph SVGs written
+            "n_unique_labels",
+            "index",                   # the written index dict
+        }
+    """
+    def _say(msg: str) -> None:
+        if progress is not None:
+            try:
+                progress(msg)
+            except Exception:
+                pass
+        else:
+            print(msg)
+
+    doc = fitz.open(str(pdf_path))
+    n_pages = len(doc)
+    if pages is None:
+        pages = list(range(n_pages))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    total_index: dict = {
+        "version": 3,
+        "format": "svg",
+        "source": str(pdf_path),
+        "glyphs": {},
+    }
+    counts: dict[str, int] = {}
+    total_boxes = 0
+    total_subpaths = 0
+    total_written = 0
+
+    for i, page_idx in enumerate(pages):
+        _say(f"Page {i + 1}/{len(pages)}: rendering + OCR…")
+        page = doc[page_idx]
+        sample = load_image(pdf_path, page=page_idx, dpi=dpi)
+        boxes = run_ocr(sample.original, psm=psm)
+
+        _say(f"Page {i + 1}/{len(pages)}: extracting vector subpaths…")
+        subpaths = extract_page_subpaths(page)
+        # Raster pixel  ->  PDF point:  points_per_inch / pixels_per_inch
+        pixel_to_pt = 72.0 / float(sample.dpi)
+        slots = assign_subpaths(subpaths, boxes, pixel_to_pt)
+
+        _say(f"Page {i + 1}/{len(pages)}: writing glyph SVGs…")
+        for slot in slots:
+            if not slot.subpaths:
+                continue
+            label = slot.char
+            label_dir = safe_label_dir(label)
+            counts[label_dir] = counts.get(label_dir, 0) + 1
+            idx = counts[label_dir] - 1
+            filename = f"{label_dir}_{idx}.svg"
+            out_file = out_dir / label_dir / filename
+            w, h, baseline_local = write_glyph_svg(slot, out_file)
+            if w == 0.0:
+                counts[label_dir] -= 1
+                continue
+            entry = {
+                "path": f"{label_dir}/{filename}",
+                "orig_h": round(h, 3),
+                "orig_w": round(w, 3),
+                "page": page_idx,
+                "bbox_pdf": [round(slot.x0, 3), round(slot.y0, 3),
+                             round(slot.x1, 3), round(slot.y1, 3)],
+            }
+            if baseline_local is not None:
+                entry["baseline"] = round(baseline_local, 3)
+            total_index["glyphs"].setdefault(label, []).append(entry)
+            total_written += 1
+
+        total_boxes += len(boxes)
+        total_subpaths += len(subpaths)
+
+    _say("Writing index.json…")
+    index_path = out_dir / "index.json"
+    index_path.write_text(
+        json.dumps(total_index, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # Auto-normalise: rewrite every glyph so its proportions match the
+    # guide font. Runs before "Done" so the library is plotter-ready on
+    # first load — no manual Normalize click required.
+    _say("Normalizing glyphs to guide font…")
+    try:
+        from svg_glyph import normalize_library
+        normalize_library(out_dir, progress=_say)
+    except Exception as ex:  # noqa: BLE001
+        _say(f"Normalize skipped: {ex}")
+
+    _say("Done.")
+
+    return {
+        "out_dir": out_dir,
+        "index_path": index_path,
+        "pages": pages,
+        "total_boxes": total_boxes,
+        "total_subpaths": total_subpaths,
+        "total_written": total_written,
+        "n_unique_labels": len(total_index["glyphs"]),
+        "index": total_index,
+    }
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -382,73 +601,17 @@ def main() -> None:
                     help="Process a single page (default: all pages)")
     args = ap.parse_args()
 
-    doc = fitz.open(str(args.pdf))
-    n_pages = len(doc)
-    if args.page is not None:
-        pages = [args.page]
-    else:
-        pages = list(range(n_pages))
-
-    out_root: Path = args.out
-    out_root.mkdir(parents=True, exist_ok=True)
-
-    total_index: dict = {
-        "version": 3,
-        "format": "svg",
-        "source": str(args.pdf),
-        "glyphs": {},
-    }
-    counts: dict[str, int] = {}
-
-    for page_idx in pages:
-        page = doc[page_idx]
-        sample = load_image(args.pdf, page=page_idx, dpi=args.dpi)
-        boxes = run_ocr(sample.original, psm=args.psm)
-
-        subpaths = extract_page_subpaths(page)
-        # Raster pixel  ->  PDF point:  points_per_inch / pixels_per_inch
-        pixel_to_pt = 72.0 / float(sample.dpi)
-
-        slots = assign_subpaths(subpaths, boxes, pixel_to_pt)
-
-        # Merge this page's slots into the global index.
-        for slot in slots:
-            if not slot.subpaths:
-                continue
-            label = slot.char
-            label_dir = safe_label_dir(label)
-            counts[label_dir] = counts.get(label_dir, 0) + 1
-            idx = counts[label_dir] - 1
-            filename = f"{label_dir}_{idx}.svg"
-            out_file = out_root / label_dir / filename
-            w, h = write_glyph_svg(slot, out_file)
-            if w == 0.0:
-                counts[label_dir] -= 1
-                continue
-            total_index["glyphs"].setdefault(label, []).append({
-                "path": f"{label_dir}/{filename}",
-                "orig_h": round(h, 3),
-                "orig_w": round(w, 3),
-                "page": page_idx,
-                "bbox_pdf": [round(slot.x0, 3), round(slot.y0, 3),
-                             round(slot.x1, 3), round(slot.y1, 3)],
-            })
-
-        assigned = sum(1 for s in slots if s.subpaths)
-        total_sub = sum(len(s.subpaths) for s in slots)
-        print(f"page {page_idx}: OCR {len(boxes)} chars, "
-              f"{len(subpaths)} subpaths -> {assigned} glyphs "
-              f"({total_sub} subpaths assigned)")
-
-    index_path = out_root / "index.json"
-    index_path.write_text(
-        json.dumps(total_index, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    pages = [args.page] if args.page is not None else None
+    stats = import_pdf_to_library(
+        pdf_path=args.pdf,
+        out_dir=args.out,
+        dpi=args.dpi,
+        psm=args.psm,
+        pages=pages,
     )
-    total_glyphs = sum(len(v) for v in total_index["glyphs"].values())
-    print(f"\nwrote {index_path}")
-    print(f"  {len(total_index['glyphs'])} unique labels, "
-          f"{total_glyphs} total glyph files")
+    print(f"\nwrote {stats['index_path']}")
+    print(f"  {stats['n_unique_labels']} unique labels, "
+          f"{stats['total_written']} total glyph files")
 
 
 if __name__ == "__main__":

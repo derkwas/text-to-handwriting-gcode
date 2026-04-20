@@ -1,96 +1,103 @@
 {
   "version": 3,
   "format": "svg",
-  "source": "handwriting_raw\\handwriting (1).pdf",
+  "source": "C:\\Users\\Derek\\OneDrive\\Desktop\\text_to_gcode\\text-to-handwriting-gcode\\handwriting_raw\\handwriting (1).pdf",
   "glyphs": {
     "t": [
       {
         "path": "t/t_0.svg",
-        "orig_h": 11.259,
-        "orig_w": 5.146,
+        "orig_h": 11.073,
+        "orig_w": 5.048,
         "page": 0,
         "bbox_pdf": [
           30.24,
           36.0,
           35.52,
           47.04
-        ]
+        ],
+        "baseline": 10.89
       },
       {
         "path": "t/t_1.svg",
-        "orig_h": 8.538,
-        "orig_w": 4.26,
+        "orig_h": 11.068,
+        "orig_w": 5.498,
         "page": 0,
         "bbox_pdf": [
           203.04,
           37.68,
           207.12,
           46.32
-        ]
+        ],
+        "baseline": 10.885
       }
     ],
     "h": [
       {
         "path": "h/h_0.svg",
-        "orig_h": 10.222,
-        "orig_w": 4.041,
+        "orig_h": 12.717,
+        "orig_w": 4.975,
         "page": 0,
         "bbox_pdf": [
           36.96,
           35.76,
           41.04,
           46.08
-        ]
+        ],
+        "baseline": 12.717
       },
       {
         "path": "h/h_1.svg",
-        "orig_h": 8.651,
-        "orig_w": 3.25,
+        "orig_h": 12.698,
+        "orig_w": 4.709,
         "page": 0,
         "bbox_pdf": [
           207.36,
           37.2,
           210.48,
           45.84
-        ]
+        ],
+        "baseline": 12.698
       }
     ],
     "e": [
       {
         "path": "e/e_0.svg",
-        "orig_h": 6.76,
-        "orig_w": 4.324,
+        "orig_h": 8.012,
+        "orig_w": 5.448,
         "page": 0,
         "bbox_pdf": [
           42.24,
           39.84,
           46.56,
           46.32
-        ]
+        ],
+        "baseline": 7.842
       },
       {
         "path": "e/e_1.svg",
-        "orig_h": 5.726,
-        "orig_w": 3.272,
+        "orig_h": 8.342,
+        "orig_w": 4.789,
         "page": 0,
         "bbox_pdf": [
           186.24,
           40.56,
           189.6,
           46.32
-        ]
+        ],
+        "baseline": 8.165
       },
       {
         "path": "e/e_2.svg",
-        "orig_h": 6.06,
-        "orig_w": 3.635,
+        "orig_h": 8.33,
+        "orig_w": 5.076,
         "page": 0,
         "bbox_pdf": [
           211.92,
           40.8,
           215.52,
           46.56
-        ]
+        ],
+        "baseline": 8.153
       }
     ],
     "q": [
@@ -104,1001 +111,1075 @@
           40.08,
           64.56,
           52.32
-        ]
+        ],
+        "baseline": 8.441
       }
     ],
     "u": [
       {
         "path": "u/u_0.svg",
-        "orig_h": 6.218,
-        "orig_w": 4.13,
+        "orig_h": 8.371,
+        "orig_w": 5.571,
         "page": 0,
         "bbox_pdf": [
           63.84,
           40.08,
           67.92,
           46.08
-        ]
+        ],
+        "baseline": 8.189
       },
       {
         "path": "u/u_1.svg",
-        "orig_h": 5.154,
-        "orig_w": 3.412,
+        "orig_h": 8.373,
+        "orig_w": 5.544,
         "page": 0,
         "bbox_pdf": [
           153.12,
           40.8,
           156.48,
           46.08
-        ]
+        ],
+        "baseline": 8.191
       }
     ],
     "i": [
       {
         "path": "i/i_0.svg",
-        "orig_h": 7.957,
-        "orig_w": 0.984,
+        "orig_h": 12.753,
+        "orig_w": 1.497,
         "page": 0,
         "bbox_pdf": [
           69.12,
           37.2,
           70.08,
           45.36
-        ]
+        ],
+        "baseline": 12.753
       }
     ],
     "c": [
       {
         "path": "c/c_0.svg",
-        "orig_h": 5.214,
-        "orig_w": 3.139,
+        "orig_h": 8.533,
+        "orig_w": 5.126,
         "page": 0,
         "bbox_pdf": [
           72.48,
           39.6,
           75.6,
           44.64
-        ]
+        ],
+        "baseline": 8.351
       }
     ],
     "k": [
       {
         "path": "k/k_0.svg",
-        "orig_h": 11.911,
-        "orig_w": 5.019,
+        "orig_h": 12.72,
+        "orig_w": 5.33,
         "page": 0,
         "bbox_pdf": [
           77.52,
           34.8,
           82.56,
           46.56
-        ]
+        ],
+        "baseline": 12.72
       }
     ],
     "b": [
       {
         "path": "b/b_0.svg",
-        "orig_h": 9.673,
-        "orig_w": 4.216,
+        "orig_h": 12.896,
+        "orig_w": 5.626,
         "page": 0,
         "bbox_pdf": [
           90.24,
           37.2,
           94.56,
           46.8
-        ]
+        ],
+        "baseline": 12.713
       }
     ],
     "r": [
       {
         "path": "r/r_0.svg",
-        "orig_h": 6.457,
-        "orig_w": 3.077,
+        "orig_h": 8.322,
+        "orig_w": 3.975,
         "page": 0,
         "bbox_pdf": [
           96.24,
           40.8,
           99.36,
           47.04
-        ]
+        ],
+        "baseline": 8.322
       },
       {
         "path": "r/r_1.svg",
-        "orig_h": 4.938,
-        "orig_w": 3.337,
+        "orig_h": 8.393,
+        "orig_w": 5.701,
         "page": 0,
         "bbox_pdf": [
           191.04,
           40.56,
           194.4,
           45.36
-        ]
+        ],
+        "baseline": 8.393
       }
     ],
     "o": [
       {
         "path": "o/o_0.svg",
-        "orig_h": 5.652,
-        "orig_w": 4.536,
+        "orig_h": 8.367,
+        "orig_w": 6.66,
         "page": 0,
         "bbox_pdf": [
           100.8,
           41.52,
           105.12,
           47.04
-        ]
+        ],
+        "baseline": 8.189
       },
       {
         "path": "o/o_1.svg",
-        "orig_h": 4.361,
-        "orig_w": 4.752,
+        "orig_h": 8.467,
+        "orig_w": 9.283,
         "page": 0,
         "bbox_pdf": [
           130.08,
           41.76,
           134.64,
           46.08
-        ]
+        ],
+        "baseline": 8.287
       },
       {
         "path": "o/o_2.svg",
-        "orig_h": 4.253,
-        "orig_w": 4.176,
+        "orig_h": 8.578,
+        "orig_w": 8.039,
         "page": 0,
         "bbox_pdf": [
           177.12,
           41.76,
           180.96,
           46.08
-        ]
+        ],
+        "baseline": 8.395
       },
       {
         "path": "o/o_3.svg",
-        "orig_h": 4.67,
-        "orig_w": 3.936,
+        "orig_h": 8.293,
+        "orig_w": 6.934,
         "page": 0,
         "bbox_pdf": [
           255.12,
           42.0,
           258.96,
           46.32
-        ]
+        ],
+        "baseline": 8.117
       }
     ],
     "w": [
       {
         "path": "w/w_0.svg",
-        "orig_h": 5.505,
-        "orig_w": 5.684,
+        "orig_h": 8.316,
+        "orig_w": 8.663,
         "page": 0,
         "bbox_pdf": [
           106.32,
           40.8,
           112.08,
           46.32
-        ]
+        ],
+        "baseline": 8.135
       }
     ],
     "n": [
       {
         "path": "n/n_0.svg",
-        "orig_h": 6.203,
-        "orig_w": 4.721,
+        "orig_h": 8.439,
+        "orig_w": 6.369,
         "page": 0,
         "bbox_pdf": [
           113.28,
           40.32,
           118.08,
           46.56
-        ]
+        ],
+        "baseline": 8.439
       }
     ],
     "f": [
       {
         "path": "f/f_0.svg",
-        "orig_h": 9.798,
-        "orig_w": 5.581,
+        "orig_h": 12.499,
+        "orig_w": 7.202,
         "page": 0,
         "bbox_pdf": [
           125.52,
           36.96,
           131.28,
           46.56
-        ]
+        ],
+        "baseline": 12.499
       }
     ],
     "x": [
       {
         "path": "x/x_0.svg",
-        "orig_h": 5.312,
-        "orig_w": 3.946,
+        "orig_h": 8.2,
+        "orig_w": 6.117,
         "page": 0,
         "bbox_pdf": [
           135.12,
           40.8,
           139.2,
           46.08
-        ]
+        ],
+        "baseline": 8.2
       }
     ],
     "j": [
       {
         "path": "j/j_0.svg",
-        "orig_h": 12.364,
-        "orig_w": 3.703,
+        "orig_h": 16.635,
+        "orig_w": 4.932,
         "page": 0,
         "bbox_pdf": [
           147.6,
           38.4,
           151.44,
           50.88
-        ]
+        ],
+        "baseline": 12.705
       }
     ],
     "m": [
       {
         "path": "m/m_0.svg",
-        "orig_h": 6.27,
-        "orig_w": 4.793,
+        "orig_h": 8.37,
+        "orig_w": 6.367,
         "page": 0,
         "bbox_pdf": [
           157.68,
           40.32,
           162.48,
           46.56
-        ]
+        ],
+        "baseline": 8.37
       }
     ],
     "p": [
       {
         "path": "p/p_0.svg",
-        "orig_h": 10.177,
-        "orig_w": 3.87,
+        "orig_h": 12.266,
+        "orig_w": 4.649,
         "page": 0,
         "bbox_pdf": [
           162.96,
           40.56,
           166.8,
           50.88
-        ]
+        ],
+        "baseline": 8.359
       }
     ],
     "s": [
       {
         "path": "s/s_0.svg",
-        "orig_h": 5.328,
-        "orig_w": 3.445,
+        "orig_h": 8.583,
+        "orig_w": 5.536,
         "page": 0,
         "bbox_pdf": [
           167.28,
           40.8,
           170.64,
           46.08
-        ]
+        ],
+        "baseline": 8.4
       }
     ],
     "v": [
       {
         "path": "v/v_0.svg",
-        "orig_h": 5.865,
-        "orig_w": 2.521,
+        "orig_h": 8.411,
+        "orig_w": 3.585,
         "page": 0,
         "bbox_pdf": [
           182.88,
           40.32,
           185.28,
           46.08
-        ]
+        ],
+        "baseline": 8.228
       }
     ],
     "l": [
       {
         "path": "l/l_0.svg",
-        "orig_h": 8.343,
-        "orig_w": 1.231,
+        "orig_h": 12.73,
+        "orig_w": 1.767,
         "page": 0,
         "bbox_pdf": [
           224.88,
           38.4,
           226.08,
           46.8
-        ]
+        ],
+        "baseline": 12.73
       }
     ],
     "a": [
       {
         "path": "a/a_0.svg",
-        "orig_h": 4.713,
-        "orig_w": 4.31,
+        "orig_h": 8.568,
+        "orig_w": 7.78,
         "page": 0,
         "bbox_pdf": [
           227.28,
           40.8,
           231.6,
           45.6
-        ]
-      }
-    ],
-    "y": [
-      {
-        "path": "y/y_0.svg",
-        "orig_h": 8.508,
-        "orig_w": 3.867,
-        "page": 0,
-        "bbox_pdf": [
-          237.36,
-          41.28,
-          241.2,
-          49.68
-        ]
-      }
-    ],
-    "d": [
-      {
-        "path": "d/d_0.svg",
-        "orig_h": 9.86,
-        "orig_w": 4.927,
-        "page": 0,
-        "bbox_pdf": [
-          249.12,
-          37.44,
-          253.68,
-          47.28
-        ]
-      }
-    ],
-    "g": [
-      {
-        "path": "g/g_0.svg",
-        "orig_h": 9.047,
-        "orig_w": 5.378,
-        "page": 0,
-        "bbox_pdf": [
-          259.44,
-          41.28,
-          264.72,
-          50.4
-        ]
-      }
-    ],
-    "T": [
-      {
-        "path": "upper_T/upper_T_0.svg",
-        "orig_h": 9.445,
-        "orig_w": 4.296,
-        "page": 0,
-        "bbox_pdf": [
-          28.08,
-          73.68,
-          32.16,
-          83.04
-        ]
-      },
-      {
-        "path": "upper_T/upper_T_1.svg",
-        "orig_h": 7.19,
-        "orig_w": 3.745,
-        "page": 0,
-        "bbox_pdf": [
-          202.08,
-          74.88,
-          205.68,
-          82.08
-        ]
-      }
-    ],
-    "H": [
-      {
-        "path": "upper_H/upper_H_0.svg",
-        "orig_h": 7.663,
-        "orig_w": 3.44,
-        "page": 0,
-        "bbox_pdf": [
-          34.56,
-          73.68,
-          38.4,
-          81.84
-        ]
-      },
-      {
-        "path": "upper_H/upper_H_1.svg",
-        "orig_h": 7.414,
-        "orig_w": 2.931,
-        "page": 0,
-        "bbox_pdf": [
-          206.4,
-          74.64,
-          209.28,
-          82.08
-        ]
-      }
-    ],
-    "E": [
-      {
-        "path": "upper_E/upper_E_0.svg",
-        "orig_h": 7.313,
-        "orig_w": 3.409,
-        "page": 0,
-        "bbox_pdf": [
-          41.04,
-          73.44,
-          44.88,
-          82.08
-        ]
-      },
-      {
-        "path": "upper_E/upper_E_1.svg",
-        "orig_h": 6.802,
-        "orig_w": 3.632,
-        "page": 0,
-        "bbox_pdf": [
-          188.16,
-          75.12,
-          191.76,
-          81.84
-        ]
-      },
-      {
-        "path": "upper_E/upper_E_2.svg",
-        "orig_h": 7.293,
-        "orig_w": 3.921,
-        "page": 0,
-        "bbox_pdf": [
-          210.72,
-          74.64,
-          214.56,
-          82.08
-        ]
-      }
-    ],
-    "Q": [
-      {
-        "path": "upper_Q/upper_Q_0.svg",
-        "orig_h": 9.59,
-        "orig_w": 6.296,
-        "page": 0,
-        "bbox_pdf": [
-          50.64,
-          74.4,
-          56.88,
-          83.76
-        ]
-      }
-    ],
-    "U": [
-      {
-        "path": "upper_U/upper_U_0.svg",
-        "orig_h": 8.221,
-        "orig_w": 4.339,
-        "page": 0,
-        "bbox_pdf": [
-          59.04,
-          74.4,
-          63.36,
-          82.56
-        ]
-      },
-      {
-        "path": "upper_U/upper_U_1.svg",
-        "orig_h": 7.624,
-        "orig_w": 3.748,
-        "page": 0,
-        "bbox_pdf": [
-          150.48,
-          73.68,
-          154.32,
-          81.12
-        ]
-      }
-    ],
-    "I": [
-      {
-        "path": "upper_I/upper_I_0.svg",
-        "orig_h": 9.357,
-        "orig_w": 4.091,
-        "page": 0,
-        "bbox_pdf": [
-          64.56,
-          73.44,
-          68.64,
-          82.8
-        ]
-      }
-    ],
-    "C": [
-      {
-        "path": "upper_C/upper_C_0.svg",
-        "orig_h": 8.34,
-        "orig_w": 3.719,
-        "page": 0,
-        "bbox_pdf": [
-          70.56,
-          73.92,
-          74.16,
-          82.32
-        ]
-      }
-    ],
-    "K": [
-      {
-        "path": "upper_K/upper_K_0.svg",
-        "orig_h": 8.344,
-        "orig_w": 3.593,
-        "page": 0,
-        "bbox_pdf": [
-          74.88,
-          73.92,
-          78.48,
-          82.32
-        ]
-      }
-    ],
-    "B": [
-      {
-        "path": "upper_B/upper_B_0.svg",
-        "orig_h": 10.072,
-        "orig_w": 4.418,
-        "page": 0,
-        "bbox_pdf": [
-          85.44,
-          73.2,
-          90.0,
-          83.04
-        ]
-      }
-    ],
-    "R": [
-      {
-        "path": "upper_R/upper_R_0.svg",
-        "orig_h": 9.703,
-        "orig_w": 4.086,
-        "page": 0,
-        "bbox_pdf": [
-          90.96,
-          72.96,
-          95.28,
-          82.56
-        ]
-      },
-      {
-        "path": "upper_R/upper_R_1.svg",
-        "orig_h": 6.89,
-        "orig_w": 3.912,
-        "page": 0,
-        "bbox_pdf": [
-          193.44,
-          74.64,
-          197.28,
-          81.6
-        ]
-      }
-    ],
-    "O": [
-      {
-        "path": "upper_O/upper_O_0.svg",
-        "orig_h": 7.383,
-        "orig_w": 4.305,
-        "page": 0,
-        "bbox_pdf": [
-          96.48,
-          74.16,
-          100.56,
-          81.36
-        ]
-      },
-      {
-        "path": "upper_O/upper_O_1.svg",
-        "orig_h": 7.51,
-        "orig_w": 4.575,
-        "page": 0,
-        "bbox_pdf": [
-          128.4,
-          73.68,
-          132.96,
-          81.12
-        ]
-      },
-      {
-        "path": "upper_O/upper_O_2.svg",
-        "orig_h": 7.658,
-        "orig_w": 4.395,
-        "page": 0,
-        "bbox_pdf": [
-          177.84,
-          74.4,
-          182.4,
-          82.08
-        ]
-      },
-      {
-        "path": "upper_O/upper_O_3.svg",
-        "orig_h": 7.005,
-        "orig_w": 4.235,
-        "page": 0,
-        "bbox_pdf": [
-          251.52,
-          75.36,
-          255.84,
-          82.32
-        ]
-      }
-    ],
-    "W": [
-      {
-        "path": "upper_W/upper_W_0.svg",
-        "orig_h": 7.433,
-        "orig_w": 5.342,
-        "page": 0,
-        "bbox_pdf": [
-          101.76,
-          73.2,
-          107.28,
-          80.64
-        ]
-      }
-    ],
-    "N": [
-      {
-        "path": "upper_N/upper_N_0.svg",
-        "orig_h": 8.793,
-        "orig_w": 4.842,
-        "page": 0,
-        "bbox_pdf": [
-          108.96,
-          72.48,
-          113.76,
-          81.36
-        ]
-      }
-    ],
-    "F": [
-      {
-        "path": "upper_F/upper_F_0.svg",
-        "orig_h": 9.014,
-        "orig_w": 3.127,
-        "page": 0,
-        "bbox_pdf": [
-          123.36,
-          73.2,
-          126.48,
-          82.32
-        ]
-      }
-    ],
-    "X": [
-      {
-        "path": "upper_X/upper_X_0.svg",
-        "orig_h": 7.441,
-        "orig_w": 4.216,
-        "page": 0,
-        "bbox_pdf": [
-          134.64,
-          73.92,
-          138.96,
-          81.6
-        ]
-      }
-    ],
-    "J": [
-      {
-        "path": "upper_J/upper_J_0.svg",
-        "orig_h": 8.22,
-        "orig_w": 3.924,
-        "page": 0,
-        "bbox_pdf": [
-          144.96,
-          73.44,
-          148.8,
-          81.6
-        ]
-      }
-    ],
-    "M": [
-      {
-        "path": "upper_M/upper_M_0.svg",
-        "orig_h": 8.09,
-        "orig_w": 5.084,
-        "page": 0,
-        "bbox_pdf": [
-          155.28,
-          73.2,
-          160.32,
-          81.36
-        ]
-      }
-    ],
-    "P": [
-      {
-        "path": "upper_P/upper_P_0.svg",
-        "orig_h": 8.436,
-        "orig_w": 3.44,
-        "page": 0,
-        "bbox_pdf": [
-          161.76,
-          73.2,
-          165.12,
-          81.6
-        ]
-      }
-    ],
-    "S": [
-      {
-        "path": "upper_S/upper_S_0.svg",
-        "orig_h": 7.638,
-        "orig_w": 3.478,
-        "page": 0,
-        "bbox_pdf": [
-          166.32,
-          73.92,
-          169.68,
-          81.6
-        ]
-      }
-    ],
-    "V": [
-      {
-        "path": "upper_V/upper_V_0.svg",
-        "orig_h": 6.595,
-        "orig_w": 3.714,
-        "page": 0,
-        "bbox_pdf": [
-          183.12,
-          75.12,
-          186.96,
-          81.6
-        ]
-      }
-    ],
-    "L": [
-      {
-        "path": "upper_L/upper_L_0.svg",
-        "orig_h": 8.224,
-        "orig_w": 2.648,
-        "page": 0,
-        "bbox_pdf": [
-          221.04,
-          74.88,
-          223.68,
-          83.04
-        ]
-      }
-    ],
-    "A": [
-      {
-        "path": "upper_A/upper_A_0.svg",
-        "orig_h": 6.792,
-        "orig_w": 3.143,
-        "page": 0,
-        "bbox_pdf": [
-          225.36,
-          74.64,
-          228.48,
-          81.36
-        ]
-      }
-    ],
-    "Z": [
-      {
-        "path": "upper_Z/upper_Z_0.svg",
-        "orig_h": 6.688,
-        "orig_w": 3.912,
-        "page": 0,
-        "bbox_pdf": [
-          229.68,
-          74.88,
-          233.76,
-          81.6
-        ]
-      }
-    ],
-    "Y": [
-      {
-        "path": "upper_Y/upper_Y_0.svg",
-        "orig_h": 6.629,
-        "orig_w": 3.78,
-        "page": 0,
-        "bbox_pdf": [
-          235.68,
-          74.64,
-          239.52,
-          81.12
-        ]
-      }
-    ],
-    "D": [
-      {
-        "path": "upper_D/upper_D_0.svg",
-        "orig_h": 7.165,
-        "orig_w": 4.085,
-        "page": 0,
-        "bbox_pdf": [
-          246.24,
-          75.36,
-          250.32,
-          82.32
-        ]
-      }
-    ],
-    "G": [
-      {
-        "path": "upper_G/upper_G_0.svg",
-        "orig_h": 7.155,
-        "orig_w": 4.457,
-        "page": 0,
-        "bbox_pdf": [
-          256.8,
-          75.36,
-          261.12,
-          82.56
-        ]
-      }
-    ],
-    "1": [
-      {
-        "path": "1/1_0.svg",
-        "orig_h": 5.975,
-        "orig_w": 0.758,
-        "page": 0,
-        "bbox_pdf": [
-          28.8,
-          112.8,
-          29.52,
-          118.8
-        ]
-      }
-    ],
-    "2": [
-      {
-        "path": "2/2_0.svg",
-        "orig_h": 6.252,
-        "orig_w": 2.78,
-        "page": 0,
-        "bbox_pdf": [
-          35.04,
-          112.08,
-          37.92,
-          118.32
-        ]
-      }
-    ],
-    "3": [
-      {
-        "path": "3/3_0.svg",
-        "orig_h": 6.662,
-        "orig_w": 2.713,
-        "page": 0,
-        "bbox_pdf": [
-          44.16,
-          111.6,
-          46.8,
-          118.08
-        ]
-      }
-    ],
-    "4": [
-      {
-        "path": "4/4_0.svg",
-        "orig_h": 6.809,
-        "orig_w": 3.415,
-        "page": 0,
-        "bbox_pdf": [
-          52.08,
-          111.6,
-          55.44,
-          118.32
-        ]
-      }
-    ],
-    "5": [
-      {
-        "path": "5/5_0.svg",
-        "orig_h": 8.108,
-        "orig_w": 3.622,
-        "page": 0,
-        "bbox_pdf": [
-          60.48,
-          111.12,
-          63.84,
-          119.28
-        ]
-      }
-    ],
-    "6": [
-      {
-        "path": "6/6_0.svg",
-        "orig_h": 7.781,
-        "orig_w": 3.141,
-        "page": 0,
-        "bbox_pdf": [
-          68.88,
-          111.36,
-          72.0,
-          119.04
-        ]
-      }
-    ],
-    "7": [
-      {
-        "path": "7/7_0.svg",
-        "orig_h": 6.616,
-        "orig_w": 3.321,
-        "page": 0,
-        "bbox_pdf": [
-          77.04,
-          112.08,
-          80.4,
-          118.56
-        ]
-      }
-    ],
-    "8": [
-      {
-        "path": "8/8_0.svg",
-        "orig_h": 8.238,
-        "orig_w": 4.018,
-        "page": 0,
-        "bbox_pdf": [
-          85.44,
-          110.88,
-          89.28,
-          118.8
-        ]
-      }
-    ],
-    "9": [
-      {
-        "path": "9/9_0.svg",
-        "orig_h": 7.474,
-        "orig_w": 3.366,
-        "page": 0,
-        "bbox_pdf": [
-          94.32,
-          111.12,
-          97.68,
-          118.56
-        ]
-      }
-    ],
-    "0": [
-      {
-        "path": "0/0_0.svg",
-        "orig_h": 7.067,
-        "orig_w": 3.756,
-        "page": 0,
-        "bbox_pdf": [
-          105.12,
-          112.08,
-          108.96,
-          119.04
-        ]
-      }
-    ],
-    "¢": [
-      {
-        "path": "u00a2/u00a2_0.svg",
-        "orig_h": 10.904,
-        "orig_w": 5.053,
-        "page": 0,
-        "bbox_pdf": [
-          120.24,
-          109.92,
-          125.28,
-          120.96
-        ]
+        ],
+        "baseline": 8.386
       }
     ],
     "z": [
       {
         "path": "z/z_0.svg",
-        "orig_h": 5.83,
-        "orig_w": 3.97,
+        "orig_h": 7.93,
+        "orig_w": 5.399,
         "page": 0,
         "bbox_pdf": [
           232.56,
           40.8,
           236.4,
           46.32
-        ]
+        ],
+        "baseline": 7.93
+      }
+    ],
+    "y": [
+      {
+        "path": "y/y_0.svg",
+        "orig_h": 12.141,
+        "orig_w": 5.465,
+        "page": 0,
+        "bbox_pdf": [
+          237.36,
+          41.28,
+          241.2,
+          49.68
+        ],
+        "baseline": 8.216
+      }
+    ],
+    "d": [
+      {
+        "path": "d/d_0.svg",
+        "orig_h": 12.754,
+        "orig_w": 6.044,
+        "page": 0,
+        "bbox_pdf": [
+          249.12,
+          37.44,
+          253.68,
+          47.28
+        ],
+        "baseline": 12.573
+      }
+    ],
+    "g": [
+      {
+        "path": "g/g_0.svg",
+        "orig_h": 12.233,
+        "orig_w": 7.272,
+        "page": 0,
+        "bbox_pdf": [
+          259.44,
+          41.28,
+          264.72,
+          50.4
+        ],
+        "baseline": 8.337
+      }
+    ],
+    "T": [
+      {
+        "path": "upper_T/upper_T_0.svg",
+        "orig_h": 12.164,
+        "orig_w": 5.499,
+        "page": 0,
+        "bbox_pdf": [
+          28.08,
+          73.68,
+          32.16,
+          83.04
+        ],
+        "baseline": 12.164
+      },
+      {
+        "path": "upper_T/upper_T_1.svg",
+        "orig_h": 12.164,
+        "orig_w": 6.285,
+        "page": 0,
+        "bbox_pdf": [
+          202.08,
+          74.88,
+          205.68,
+          82.08
+        ],
+        "baseline": 12.164
+      }
+    ],
+    "H": [
+      {
+        "path": "upper_H/upper_H_0.svg",
+        "orig_h": 12.071,
+        "orig_w": 5.418,
+        "page": 0,
+        "bbox_pdf": [
+          34.56,
+          73.68,
+          38.4,
+          81.84
+        ],
+        "baseline": 12.071
+      },
+      {
+        "path": "upper_H/upper_H_1.svg",
+        "orig_h": 12.17,
+        "orig_w": 4.789,
+        "page": 0,
+        "bbox_pdf": [
+          206.4,
+          74.64,
+          209.28,
+          82.08
+        ],
+        "baseline": 12.17
+      }
+    ],
+    "E": [
+      {
+        "path": "upper_E/upper_E_0.svg",
+        "orig_h": 11.908,
+        "orig_w": 5.55,
+        "page": 0,
+        "bbox_pdf": [
+          41.04,
+          73.44,
+          44.88,
+          82.08
+        ],
+        "baseline": 11.908
+      },
+      {
+        "path": "upper_E/upper_E_1.svg",
+        "orig_h": 11.999,
+        "orig_w": 6.472,
+        "page": 0,
+        "bbox_pdf": [
+          188.16,
+          75.12,
+          191.76,
+          81.84
+        ],
+        "baseline": 11.999
+      },
+      {
+        "path": "upper_E/upper_E_2.svg",
+        "orig_h": 12.123,
+        "orig_w": 6.49,
+        "page": 0,
+        "bbox_pdf": [
+          210.72,
+          74.64,
+          214.56,
+          82.08
+        ],
+        "baseline": 12.123
+      }
+    ],
+    "Q": [
+      {
+        "path": "upper_Q/upper_Q_0.svg",
+        "orig_h": 15.847,
+        "orig_w": 10.446,
+        "page": 0,
+        "bbox_pdf": [
+          50.64,
+          74.4,
+          56.88,
+          83.76
+        ],
+        "baseline": 12.315
+      }
+    ],
+    "U": [
+      {
+        "path": "upper_U/upper_U_0.svg",
+        "orig_h": 12.31,
+        "orig_w": 6.528,
+        "page": 0,
+        "bbox_pdf": [
+          59.04,
+          74.4,
+          63.36,
+          82.56
+        ],
+        "baseline": 12.038
+      },
+      {
+        "path": "upper_U/upper_U_1.svg",
+        "orig_h": 12.358,
+        "orig_w": 6.134,
+        "page": 0,
+        "bbox_pdf": [
+          150.48,
+          73.68,
+          154.32,
+          81.12
+        ],
+        "baseline": 12.085
+      }
+    ],
+    "I": [
+      {
+        "path": "upper_I/upper_I_0.svg",
+        "orig_h": 12.15,
+        "orig_w": 5.284,
+        "page": 0,
+        "bbox_pdf": [
+          64.56,
+          73.44,
+          68.64,
+          82.8
+        ],
+        "baseline": 12.15
+      }
+    ],
+    "C": [
+      {
+        "path": "upper_C/upper_C_0.svg",
+        "orig_h": 12.741,
+        "orig_w": 5.596,
+        "page": 0,
+        "bbox_pdf": [
+          70.56,
+          73.92,
+          74.16,
+          82.32
+        ],
+        "baseline": 12.466
+      }
+    ],
+    "K": [
+      {
+        "path": "upper_K/upper_K_0.svg",
+        "orig_h": 12.161,
+        "orig_w": 5.195,
+        "page": 0,
+        "bbox_pdf": [
+          74.88,
+          73.92,
+          78.48,
+          82.32
+        ],
+        "baseline": 12.161
+      }
+    ],
+    "B": [
+      {
+        "path": "upper_B/upper_B_0.svg",
+        "orig_h": 11.886,
+        "orig_w": 5.31,
+        "page": 0,
+        "bbox_pdf": [
+          85.44,
+          73.2,
+          90.0,
+          83.04
+        ],
+        "baseline": 11.886
+      }
+    ],
+    "R": [
+      {
+        "path": "upper_R/upper_R_0.svg",
+        "orig_h": 12.081,
+        "orig_w": 5.12,
+        "page": 0,
+        "bbox_pdf": [
+          90.96,
+          72.96,
+          95.28,
+          82.56
+        ],
+        "baseline": 12.081
+      },
+      {
+        "path": "upper_R/upper_R_1.svg",
+        "orig_h": 12.175,
+        "orig_w": 6.928,
+        "page": 0,
+        "bbox_pdf": [
+          193.44,
+          74.64,
+          197.28,
+          81.6
+        ],
+        "baseline": 12.175
+      }
+    ],
+    "O": [
+      {
+        "path": "upper_O/upper_O_0.svg",
+        "orig_h": 12.508,
+        "orig_w": 7.31,
+        "page": 0,
+        "bbox_pdf": [
+          96.48,
+          74.16,
+          100.56,
+          81.36
+        ],
+        "baseline": 12.238
+      },
+      {
+        "path": "upper_O/upper_O_1.svg",
+        "orig_h": 12.656,
+        "orig_w": 7.688,
+        "page": 0,
+        "bbox_pdf": [
+          128.4,
+          73.68,
+          132.96,
+          81.12
+        ],
+        "baseline": 12.383
+      },
+      {
+        "path": "upper_O/upper_O_2.svg",
+        "orig_h": 12.686,
+        "orig_w": 7.317,
+        "page": 0,
+        "bbox_pdf": [
+          177.84,
+          74.4,
+          182.4,
+          82.08
+        ],
+        "baseline": 12.412
+      },
+      {
+        "path": "upper_O/upper_O_3.svg",
+        "orig_h": 12.505,
+        "orig_w": 7.654,
+        "page": 0,
+        "bbox_pdf": [
+          251.52,
+          75.36,
+          255.84,
+          82.32
+        ],
+        "baseline": 12.235
+      }
+    ],
+    "W": [
+      {
+        "path": "upper_W/upper_W_0.svg",
+        "orig_h": 12.478,
+        "orig_w": 8.968,
+        "page": 0,
+        "bbox_pdf": [
+          101.76,
+          73.2,
+          107.28,
+          80.64
+        ],
+        "baseline": 12.203
+      }
+    ],
+    "N": [
+      {
+        "path": "upper_N/upper_N_0.svg",
+        "orig_h": 12.437,
+        "orig_w": 6.871,
+        "page": 0,
+        "bbox_pdf": [
+          108.96,
+          72.48,
+          113.76,
+          81.36
+        ],
+        "baseline": 12.163
+      }
+    ],
+    "F": [
+      {
+        "path": "upper_F/upper_F_0.svg",
+        "orig_h": 12.179,
+        "orig_w": 4.203,
+        "page": 0,
+        "bbox_pdf": [
+          123.36,
+          73.2,
+          126.48,
+          82.32
+        ],
+        "baseline": 12.179
+      }
+    ],
+    "X": [
+      {
+        "path": "upper_X/upper_X_0.svg",
+        "orig_h": 12.167,
+        "orig_w": 6.84,
+        "page": 0,
+        "bbox_pdf": [
+          134.64,
+          73.92,
+          138.96,
+          81.6
+        ],
+        "baseline": 12.167
+      }
+    ],
+    "J": [
+      {
+        "path": "upper_J/upper_J_0.svg",
+        "orig_h": 12.359,
+        "orig_w": 5.877,
+        "page": 0,
+        "bbox_pdf": [
+          144.96,
+          73.44,
+          148.8,
+          81.6
+        ],
+        "baseline": 12.086
+      }
+    ],
+    "M": [
+      {
+        "path": "upper_M/upper_M_0.svg",
+        "orig_h": 12.158,
+        "orig_w": 7.62,
+        "page": 0,
+        "bbox_pdf": [
+          155.28,
+          73.2,
+          160.32,
+          81.36
+        ],
+        "baseline": 12.158
+      }
+    ],
+    "P": [
+      {
+        "path": "upper_P/upper_P_0.svg",
+        "orig_h": 12.162,
+        "orig_w": 4.935,
+        "page": 0,
+        "bbox_pdf": [
+          161.76,
+          73.2,
+          165.12,
+          81.6
+        ],
+        "baseline": 12.162
+      }
+    ],
+    "S": [
+      {
+        "path": "upper_S/upper_S_0.svg",
+        "orig_h": 12.53,
+        "orig_w": 5.702,
+        "page": 0,
+        "bbox_pdf": [
+          166.32,
+          73.92,
+          169.68,
+          81.6
+        ],
+        "baseline": 12.26
+      }
+    ],
+    "V": [
+      {
+        "path": "upper_V/upper_V_0.svg",
+        "orig_h": 12.456,
+        "orig_w": 6.966,
+        "page": 0,
+        "bbox_pdf": [
+          183.12,
+          75.12,
+          186.96,
+          81.6
+        ],
+        "baseline": 12.181
+      }
+    ],
+    "L": [
+      {
+        "path": "upper_L/upper_L_0.svg",
+        "orig_h": 12.189,
+        "orig_w": 3.898,
+        "page": 0,
+        "bbox_pdf": [
+          221.04,
+          74.88,
+          223.68,
+          83.04
+        ],
+        "baseline": 12.189
+      }
+    ],
+    "A": [
+      {
+        "path": "upper_A/upper_A_0.svg",
+        "orig_h": 12.382,
+        "orig_w": 5.726,
+        "page": 0,
+        "bbox_pdf": [
+          225.36,
+          74.64,
+          228.48,
+          81.36
+        ],
+        "baseline": 12.382
+      }
+    ],
+    "Z": [
+      {
+        "path": "upper_Z/upper_Z_0.svg",
+        "orig_h": 12.046,
+        "orig_w": 7.088,
+        "page": 0,
+        "bbox_pdf": [
+          229.68,
+          74.88,
+          233.76,
+          81.6
+        ],
+        "baseline": 12.046
+      }
+    ],
+    "Y": [
+      {
+        "path": "upper_Y/upper_Y_0.svg",
+        "orig_h": 12.176,
+        "orig_w": 6.88,
+        "page": 0,
+        "bbox_pdf": [
+          235.68,
+          74.64,
+          239.52,
+          81.12
+        ],
+        "baseline": 12.176
+      }
+    ],
+    "D": [
+      {
+        "path": "upper_D/upper_D_0.svg",
+        "orig_h": 12.167,
+        "orig_w": 6.936,
+        "page": 0,
+        "bbox_pdf": [
+          246.24,
+          75.36,
+          250.32,
+          82.32
+        ],
+        "baseline": 12.167
+      }
+    ],
+    "G": [
+      {
+        "path": "upper_G/upper_G_0.svg",
+        "orig_h": 12.706,
+        "orig_w": 7.944,
+        "page": 0,
+        "bbox_pdf": [
+          256.8,
+          75.36,
+          261.12,
+          82.56
+        ],
+        "baseline": 12.432
+      }
+    ],
+    "1": [
+      {
+        "path": "1/1_0.svg",
+        "orig_h": 12.27,
+        "orig_w": 1.454,
+        "page": 0,
+        "bbox_pdf": [
+          28.8,
+          112.8,
+          29.52,
+          118.8
+        ],
+        "baseline": 12.27
+      }
+    ],
+    "2": [
+      {
+        "path": "2/2_0.svg",
+        "orig_h": 12.304,
+        "orig_w": 5.475,
+        "page": 0,
+        "bbox_pdf": [
+          35.04,
+          112.08,
+          37.92,
+          118.32
+        ],
+        "baseline": 12.304
+      }
+    ],
+    "3": [
+      {
+        "path": "3/3_0.svg",
+        "orig_h": 12.277,
+        "orig_w": 5.027,
+        "page": 0,
+        "bbox_pdf": [
+          44.16,
+          111.6,
+          46.8,
+          118.08
+        ],
+        "baseline": 12.098
+      }
+    ],
+    "4": [
+      {
+        "path": "4/4_0.svg",
+        "orig_h": 12.302,
+        "orig_w": 6.17,
+        "page": 0,
+        "bbox_pdf": [
+          52.08,
+          111.6,
+          55.44,
+          118.32
+        ],
+        "baseline": 12.302
+      }
+    ],
+    "5": [
+      {
+        "path": "5/5_0.svg",
+        "orig_h": 12.328,
+        "orig_w": 5.236,
+        "page": 0,
+        "bbox_pdf": [
+          60.48,
+          111.12,
+          63.84,
+          119.28
+        ],
+        "baseline": 12.145
+      }
+    ],
+    "6": [
+      {
+        "path": "6/6_0.svg",
+        "orig_h": 12.397,
+        "orig_w": 4.883,
+        "page": 0,
+        "bbox_pdf": [
+          68.88,
+          111.36,
+          72.0,
+          119.04
+        ],
+        "baseline": 12.216
+      }
+    ],
+    "7": [
+      {
+        "path": "7/7_0.svg",
+        "orig_h": 12.264,
+        "orig_w": 6.191,
+        "page": 0,
+        "bbox_pdf": [
+          77.04,
+          112.08,
+          80.4,
+          118.56
+        ],
+        "baseline": 12.082
+      }
+    ],
+    "8": [
+      {
+        "path": "8/8_0.svg",
+        "orig_h": 12.356,
+        "orig_w": 6.031,
+        "page": 0,
+        "bbox_pdf": [
+          85.44,
+          110.88,
+          89.28,
+          118.8
+        ],
+        "baseline": 12.176
+      }
+    ],
+    "9": [
+      {
+        "path": "9/9_0.svg",
+        "orig_h": 12.455,
+        "orig_w": 5.609,
+        "page": 0,
+        "bbox_pdf": [
+          94.32,
+          111.12,
+          97.68,
+          118.56
+        ],
+        "baseline": 12.273
+      }
+    ],
+    "0": [
+      {
+        "path": "0/0_0.svg",
+        "orig_h": 12.388,
+        "orig_w": 6.51,
+        "page": 0,
+        "bbox_pdf": [
+          105.12,
+          112.08,
+          108.96,
+          119.04
+        ],
+        "baseline": 12.207
+      }
+    ],
+    "¢": [
+      {
+        "path": "u00a2/u00a2_0.svg",
+        "orig_h": 15.207,
+        "orig_w": 6.992,
+        "page": 0,
+        "bbox_pdf": [
+          120.24,
+          109.92,
+          125.28,
+          120.96
+        ],
+        "baseline": 11.817
       }
     ]
   }

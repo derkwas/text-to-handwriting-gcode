@@ -28,16 +28,16 @@ from dataclasses import dataclass
 from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from svg_glyph import (
     Glyph,
+    centerlines_to_svg,
     compute_centerlines,
     rasterize_glyph,
-    transform_centerline_polyline,
 )
 
 
@@ -52,6 +52,19 @@ class GlyphVariant:
     abs_path: Path
     orig_h: float | None
     orig_w: float | None
+    # Baseline y in glyph-local coordinates (0 at top of glyph bbox). For
+    # non-descender chars ≈ orig_h (baseline at bottom of ink); for
+    # descenders (g, y, $, …) < orig_h so that ink below baseline renders
+    # below the line's baseline. None when unknown (older libraries).
+    baseline: float | None = None
+    # User-editable display state, persisted verbatim — no scale baking,
+    # no offset absorption. Drag / slider modify these directly, Save
+    # writes them to index.json, Reload restores them. Numbers you see
+    # after save equal what you set; geometry on disk is untouched by
+    # user edits (only normalize changes geometry).
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    user_scale: float = 1.0
 
 
 def safe_label_dir(label: str) -> str:
@@ -125,6 +138,10 @@ def load_variants(library_paths: list[Path]) -> list[GlyphVariant]:
                     abs_path=lib / rel,
                     orig_h=entry.get("orig_h"),
                     orig_w=entry.get("orig_w"),
+                    baseline=entry.get("baseline"),
+                    offset_x=float(entry.get("offset_x", 0.0)),
+                    offset_y=float(entry.get("offset_y", 0.0)),
+                    user_scale=float(entry.get("user_scale", 1.0)),
                 ))
     variants.sort(key=lambda v: (v.label, str(v.lib_path), v.rel_path))
     return variants
@@ -154,18 +171,28 @@ class SvgGlyphEditorApp:
         self.selected_global_idx: int | None = None
         self.editor_glyph: Glyph | None = None
         self.editor_centerlines: list[dict] = []  # base-glyph coord space
-        self.editor_offset_x = 0.0   # translation in glyph-local units
-        self.editor_offset_y = 0.0
-        self.glyph_user_scale = 1.0
-        self.editor_scale = 1.0      # display scale (glyph-units -> canvas px)
+        # Typographic baseline y inside the glyph's local frame. Read-only
+        # metadata from normalize, displayed by the editor for reference
+        # but not mutated by the user (vertical drag affects offset_y
+        # instead, which is purely positional).
+        self.editor_baseline: float | None = None
+        # User-editable positional state. These are the single source of
+        # truth for the glyph's on-screen position and user-visible size:
+        # drag modifies them, slider modifies glyph_user_scale. Save just
+        # writes them to index.json; Load restores them. Nothing is baked
+        # into SVG geometry, nothing is reset on save.
+        self.editor_offset_x = 0.0   # horizontal shift (pt)
+        self.editor_offset_y = 0.0   # vertical shift (pt)
+        self.glyph_user_scale = 1.0  # size multiplier
+        self.editor_scale = 1.0      # derived: glyph-pt -> canvas px
         self.drag_last_x = 0
         self.drag_last_y = 0
-        self.pending_auto_fit = False
         self._suppress_scale_callback = False
         self.last_guide_bbox: tuple[int, int, int, int] | None = None
         self.last_baseline_y = 0
 
         self.ref_orig_h = 8.0
+        self.max_orig_h = 10.0
         self.lowercase_floor_ratio = 0.72
         self.guide_preview_height_ratio = 0.56
         self.label_target_orig_h: dict[str, float] = {}
@@ -182,8 +209,11 @@ class SvgGlyphEditorApp:
         )
         self.guide_show_var = tk.BooleanVar(value=True)
         self.guide_family = fallback_family
-        self.auto_fit_var = tk.BooleanVar(value=True)
         self.centerline_show_var = tk.BooleanVar(value=True)
+        # PIL font is used to measure the TRUE ink bbox of each guide letter
+        # (Tk's canvas.bbox returns the font line box, identical for every
+        # character). We cache by (family, size) so rendering is cheap.
+        self._pil_font_cache: dict[tuple[str, int], "ImageFont.FreeTypeFont"] = {}
         self.glyph_scale_var = tk.DoubleVar(value=1.0)
         self.glyph_scale_display_var = tk.StringVar(value="1.00x")
 
@@ -193,7 +223,19 @@ class SvgGlyphEditorApp:
     # ── UI scaffolding ──────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        paned = ttk.Panedwindow(self.root, orient=tk.HORIZONTAL)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        editor_page = ttk.Frame(self.notebook)
+        compose_page = ttk.Frame(self.notebook)
+        self.notebook.add(editor_page, text="Edit Glyphs")
+        self.notebook.add(compose_page, text="Compose Text")
+
+        self._build_editor_page(editor_page)
+        self._build_compose_page(compose_page)
+
+    def _build_editor_page(self, parent: ttk.Frame) -> None:
+        paned = ttk.Panedwindow(parent, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True)
 
         left = ttk.Frame(paned)
@@ -201,19 +243,29 @@ class SvgGlyphEditorApp:
         paned.add(left, weight=3)
         paned.add(right, weight=2)
 
+        # Row 1: import + library path + reload
         top = ttk.Frame(left)
-        top.pack(fill=tk.X, padx=8, pady=8)
-        ttk.Label(top, text="Libraries:").pack(side=tk.LEFT)
+        top.pack(fill=tk.X, padx=8, pady=(8, 4))
+        ttk.Button(top, text="Import PDF…",
+                   command=self.on_import_pdf_clicked).pack(side=tk.LEFT)
+        ttk.Label(top, text="  Libraries:").pack(side=tk.LEFT)
         self.libs_var = tk.StringVar(value=",".join(str(p) for p in self.library_paths))
         self.libs_entry = ttk.Entry(top, textvariable=self.libs_var, width=70)
         self.libs_entry.pack(side=tk.LEFT, padx=(6, 8), fill=tk.X, expand=True)
         ttk.Button(top, text="Reload", command=self.on_reload_clicked).pack(side=tk.LEFT)
-        ttk.Label(top, text="Filter:").pack(side=tk.LEFT, padx=(12, 4))
+
+        # Row 2: filter + counts + import status
+        top2 = ttk.Frame(left)
+        top2.pack(fill=tk.X, padx=8, pady=(0, 8))
+        ttk.Label(top2, text="Filter:").pack(side=tk.LEFT)
         self.filter_var = tk.StringVar()
         self.filter_var.trace_add("write", lambda *_: self.apply_filter())
-        ttk.Entry(top, textvariable=self.filter_var, width=18).pack(side=tk.LEFT)
+        ttk.Entry(top2, textvariable=self.filter_var, width=18).pack(side=tk.LEFT, padx=(4, 0))
         self.count_var = tk.StringVar(value="0 glyphs")
-        ttk.Label(top, textvariable=self.count_var).pack(side=tk.LEFT, padx=(12, 0))
+        ttk.Label(top2, textvariable=self.count_var).pack(side=tk.LEFT, padx=(12, 0))
+        self.status_var = tk.StringVar(value="")
+        ttk.Label(top2, textvariable=self.status_var,
+                   foreground="#555").pack(side=tk.LEFT, padx=(16, 0))
 
         grid_frame = ttk.Frame(left)
         grid_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
@@ -252,26 +304,34 @@ class SvgGlyphEditorApp:
 
         editor_group = ttk.LabelFrame(right, text="Editor (drag to move)")
         editor_group.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
-        self.editor_canvas = tk.Canvas(editor_group, width=520, height=520,
-                                        bg="#d9d9d9", highlightthickness=1)
-        self.editor_canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-        self.editor_canvas.bind("<Button-1>", self.on_editor_press)
-        self.editor_canvas.bind("<B1-Motion>", self.on_editor_drag)
-        self.editor_canvas.bind("<Configure>", lambda _e: self.redraw_editor())
 
-        guide_controls = ttk.Frame(editor_group)
-        guide_controls.pack(fill=tk.X, padx=8, pady=(0, 6))
-        ttk.Checkbutton(guide_controls, text="Show font guide",
-                        variable=self.guide_show_var,
-                        command=self.redraw_editor).pack(side=tk.LEFT)
-        ttk.Checkbutton(guide_controls, text="Auto-fit glyph to guide",
-                        variable=self.auto_fit_var).pack(side=tk.LEFT, padx=(10, 0))
-        ttk.Checkbutton(guide_controls, text="Show centerline",
-                        variable=self.centerline_show_var,
-                        command=self.redraw_editor).pack(side=tk.LEFT, padx=(10, 0))
+        # Pack bottom-up so the action buttons are ALWAYS visible: Tk packs
+        # widgets in declaration order and side=BOTTOM stacks from the
+        # bottom. The canvas goes LAST with expand=True so it fills only
+        # whatever vertical space is left — it can shrink but never push
+        # the buttons off-screen.
+        tip = ttk.Label(editor_group, text=(
+            "Tip: drag to move glyph. Arrow keys nudge; Shift+Arrow = 5×. "
+            "Dragging vertically adjusts the baseline. Scale resizes around centre."
+        ), wraplength=460)
+        tip.pack(side=tk.BOTTOM, anchor="w", padx=8, pady=(0, 8))
+
+        buttons = ttk.Frame(editor_group)
+        buttons.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Button(buttons, text="Save Transform",
+                   command=self.save_transform).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Reset Shift",
+                   command=self.reset_shift).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(buttons, text="Delete Variant",
+                   command=self.delete_variant).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(buttons, text="Next", command=self.select_next).pack(
+            side=tk.LEFT, padx=(8, 0))
+        self.editor_save_status = tk.StringVar(value="")
+        ttk.Label(buttons, textvariable=self.editor_save_status,
+                  foreground="#2a7c2a").pack(side=tk.LEFT, padx=(12, 0))
 
         scale_controls = ttk.Frame(editor_group)
-        scale_controls.pack(fill=tk.X, padx=8, pady=(0, 6))
+        scale_controls.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
         ttk.Label(scale_controls, text="Glyph scale:").pack(side=tk.LEFT)
         ttk.Scale(scale_controls, from_=0.3, to=3.0,
                   variable=self.glyph_scale_var,
@@ -281,36 +341,760 @@ class SvgGlyphEditorApp:
                   width=6).pack(side=tk.LEFT)
         self.glyph_scale_var.trace_add("write",
                                         lambda *_: self.on_glyph_scale_changed())
-        ttk.Button(scale_controls, text="Reset Scale",
-                   command=self.reset_glyph_scale).pack(side=tk.LEFT)
-        ttk.Button(scale_controls, text="Auto Fit Now",
-                   command=self.auto_fit_current_glyph).pack(side=tk.LEFT, padx=(8, 0))
+        # "Reset" clears scale + offsets so the glyph snaps back to the
+        # canvas line box with no user adjustment.
+        ttk.Button(scale_controls, text="Reset",
+                   command=self.auto_fit_current_glyph
+                   ).pack(side=tk.LEFT)
 
-        buttons = ttk.Frame(editor_group)
-        buttons.pack(fill=tk.X, padx=8, pady=(0, 8))
-        ttk.Button(buttons, text="Save Transform",
-                   command=self.save_transform).pack(side=tk.LEFT)
-        ttk.Button(buttons, text="Reset Shift",
-                   command=self.reset_shift).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(buttons, text="Delete Variant",
-                   command=self.delete_variant).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(buttons, text="Next", command=self.select_next).pack(
-            side=tk.LEFT, padx=(8, 0))
+        guide_controls = ttk.Frame(editor_group)
+        guide_controls.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Checkbutton(guide_controls, text="Show font guide",
+                        variable=self.guide_show_var,
+                        command=self.redraw_editor).pack(side=tk.LEFT)
+        ttk.Checkbutton(guide_controls, text="Show centerline",
+                        variable=self.centerline_show_var,
+                        command=self.redraw_editor).pack(side=tk.LEFT, padx=(10, 0))
 
-        ttk.Label(editor_group, text=(
-            "Tip: drag to move glyph. Arrow keys nudge; Shift+Arrow nudges by 5x. "
-            "Scale slider resizes the glyph around its center."
-        )).pack(anchor="w", padx=8, pady=(0, 8))
+        # Canvas last — fills whatever vertical space is left. A moderate
+        # reqheight (not 520) so the frame doesn't force an over-tall window.
+        self.editor_canvas = tk.Canvas(editor_group, width=480, height=360,
+                                        bg="#d9d9d9", highlightthickness=1)
+        self.editor_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True,
+                                 padx=8, pady=8)
+        self.editor_canvas.bind("<Button-1>", self.on_editor_press)
+        self.editor_canvas.bind("<B1-Motion>", self.on_editor_drag)
+        self.editor_canvas.bind("<Configure>", lambda _e: self.redraw_editor())
 
-        # Key bindings.
-        self.root.bind("<Left>", lambda e: self.nudge(-0.2, 0))
-        self.root.bind("<Right>", lambda e: self.nudge(0.2, 0))
-        self.root.bind("<Up>", lambda e: self.nudge(0, -0.2))
-        self.root.bind("<Down>", lambda e: self.nudge(0, 0.2))
-        self.root.bind("<Shift-Left>", lambda e: self.nudge(-1.0, 0))
-        self.root.bind("<Shift-Right>", lambda e: self.nudge(1.0, 0))
-        self.root.bind("<Shift-Up>", lambda e: self.nudge(0, -1.0))
-        self.root.bind("<Shift-Down>", lambda e: self.nudge(0, 1.0))
+        # Key bindings — only fire when the Edit Glyphs tab is active, so
+        # typing in the Compose Text input doesn't nudge the hidden glyph.
+        def _if_editor(fn):
+            def handler(_e):
+                if getattr(self, "notebook", None) is None:
+                    fn()
+                    return
+                try:
+                    if self.notebook.index("current") == 0:
+                        fn()
+                except Exception:
+                    fn()
+            return handler
+
+        self.root.bind("<Left>", _if_editor(lambda: self.nudge(-0.2, 0)))
+        self.root.bind("<Right>", _if_editor(lambda: self.nudge(0.2, 0)))
+        self.root.bind("<Up>", _if_editor(lambda: self.nudge(0, -0.2)))
+        self.root.bind("<Down>", _if_editor(lambda: self.nudge(0, 0.2)))
+        self.root.bind("<Shift-Left>", _if_editor(lambda: self.nudge(-1.0, 0)))
+        self.root.bind("<Shift-Right>", _if_editor(lambda: self.nudge(1.0, 0)))
+        self.root.bind("<Shift-Up>", _if_editor(lambda: self.nudge(0, -1.0)))
+        self.root.bind("<Shift-Down>", _if_editor(lambda: self.nudge(0, 1.0)))
+
+    # ── Compose page ────────────────────────────────────────────────────
+
+    def _build_compose_page(self, parent: ttk.Frame) -> None:
+        """Right-hand tab: type text, render it using the loaded glyph
+        library, preview the composition, optionally save as PNG/SVG."""
+        paned = ttk.Panedwindow(parent, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True)
+
+        left = ttk.Frame(paned)
+        right = ttk.Frame(paned)
+        paned.add(left, weight=1)
+        paned.add(right, weight=3)
+
+        ttk.Label(left, text="Text to render:").pack(anchor="w",
+                                                     padx=8, pady=(8, 2))
+        self.compose_text = tk.Text(left, height=10, wrap="word",
+                                    font=("Consolas", 11))
+        self.compose_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        self.compose_text.insert("1.0", "The quick brown fox\njumps over the lazy dog")
+        ttk.Label(
+            left,
+            text="Tip: put '---PAGE---' on its own line to start a new page.",
+            foreground="#666",
+        ).pack(anchor="w", padx=8, pady=(0, 4))
+
+        ctrl = ttk.Frame(left)
+        ctrl.pack(fill=tk.X, padx=8, pady=4)
+        ttk.Label(ctrl, text="Page:").grid(row=0, column=0, sticky="w")
+        ttk.Label(ctrl, text="8.5 × 11 in (Letter)",
+                  foreground="#666").grid(row=0, column=1, columnspan=3,
+                                          sticky="w", padx=(4, 0))
+        ttk.Label(ctrl, text="Margin (in):").grid(row=1, column=0, sticky="w",
+                                                   pady=(6, 0))
+        self.compose_margin_var = tk.DoubleVar(value=0.5)
+        ttk.Spinbox(ctrl, from_=0.0, to=3.0, increment=0.1,
+                    textvariable=self.compose_margin_var, width=6
+                    ).grid(row=1, column=1, padx=(4, 12), sticky="w",
+                           pady=(6, 0))
+        ttk.Label(ctrl, text="Zoom:").grid(row=1, column=2, sticky="w",
+                                            pady=(6, 0))
+        # Zoom 1.0 = whole page fits the preview canvas. Above 1 scales up
+        # (scrolls), below 1 shrinks. Internal rendering happens at a
+        # fixed high DPI (see RENDER_PX_PER_PT) then resized for display,
+        # so strokes stay crisp at any zoom.
+        self.compose_scale_var = tk.DoubleVar(value=1.0)
+        ttk.Spinbox(ctrl, from_=0.25, to=5.0, increment=0.1,
+                    textvariable=self.compose_scale_var, width=6
+                    ).grid(row=1, column=3, padx=(4, 0), sticky="w",
+                           pady=(6, 0))
+
+        ttk.Label(ctrl, text="Pen thickness (pt):").grid(
+            row=2, column=0, sticky="w", pady=(6, 0))
+        # Default 0.6 pt ≈ 0.21 mm — a typical fineliner / technical pen
+        # width. Units are PDF points so values translate directly to
+        # plotter output dimensions.
+        self.compose_thickness_var = tk.DoubleVar(value=0.6)
+        ttk.Spinbox(ctrl, from_=0.05, to=5.0, increment=0.05,
+                    textvariable=self.compose_thickness_var, width=6,
+                    ).grid(row=2, column=1, padx=(4, 12),
+                           sticky="w", pady=(6, 0))
+
+        self.compose_random_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctrl, text="Randomize variants",
+                        variable=self.compose_random_var
+                        ).grid(row=3, column=0, columnspan=4,
+                               sticky="w", pady=(6, 0))
+
+        # Overlay the raw centerline polylines on top of the stroked output
+        # so you can see exactly what shape the pen will draw.
+        self.compose_vectors_show_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ctrl, text="Overlay vector centerlines (red)",
+                        variable=self.compose_vectors_show_var
+                        ).grid(row=4, column=0, columnspan=4,
+                               sticky="w", pady=(2, 0))
+
+        self.compose_ruled_paper_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ctrl, text="Ruled paper background",
+                        variable=self.compose_ruled_paper_var
+                        ).grid(row=5, column=0, columnspan=4,
+                               sticky="w", pady=(2, 0))
+
+        btn_row = ttk.Frame(left)
+        btn_row.pack(fill=tk.X, padx=8, pady=(4, 6))
+        ttk.Button(btn_row, text="Render",
+                   command=self.on_compose_render).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="Save PNG…",
+                   command=self.on_compose_save_png
+                   ).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(btn_row, text="Save SVG…",
+                   command=self.on_compose_save_svg
+                   ).pack(side=tk.LEFT, padx=(8, 0))
+
+        self.compose_status = tk.StringVar(value="")
+        ttk.Label(left, textvariable=self.compose_status,
+                  foreground="#555", wraplength=320, justify="left"
+                  ).pack(fill=tk.X, padx=8, pady=(4, 8))
+
+        # Preview: scrollable canvas.
+        preview_frame = ttk.Frame(right)
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.compose_canvas = tk.Canvas(preview_frame, bg="#ffffff",
+                                        highlightthickness=1,
+                                        highlightbackground="#aaa")
+        vsb = ttk.Scrollbar(preview_frame, orient=tk.VERTICAL,
+                            command=self.compose_canvas.yview)
+        hsb = ttk.Scrollbar(preview_frame, orient=tk.HORIZONTAL,
+                            command=self.compose_canvas.xview)
+        self.compose_canvas.configure(yscrollcommand=vsb.set,
+                                      xscrollcommand=hsb.set)
+        self.compose_canvas.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        preview_frame.rowconfigure(0, weight=1)
+        preview_frame.columnconfigure(0, weight=1)
+
+        # Preview state.
+        self.compose_photo_ref: ImageTk.PhotoImage | None = None
+        self.compose_last_image: "Image.Image | None" = None
+        self.compose_last_text: str = ""
+        # Cache of composed glyph layouts for SVG export: each element is
+        # {"x_pt": float, "y_pt": float, "glyph": Glyph, "label": str}.
+        self.compose_layout: list[dict] = []
+        # Centerline cache: {variant_abs_path: [{"points": [...], "closed": bool}, ...]}.
+        # compute_centerlines is ~10–20 ms per glyph; caching means rendering a
+        # 200-char page after the first render is basically instant. Cleared on
+        # library reload (normalize changes geometry).
+        self.compose_centerline_cache: dict[Path, list[dict]] = {}
+
+    # ── Compose logic ───────────────────────────────────────────────────
+
+    def _variants_by_label(self) -> dict[str, list[GlyphVariant]]:
+        by_label: dict[str, list[GlyphVariant]] = {}
+        for v in self.variants:
+            by_label.setdefault(v.label, []).append(v)
+        return by_label
+
+    def _layout_text(
+        self,
+        text: str,
+        variants_by_label: dict[str, list[GlyphVariant]],
+        line_width_pt: float,
+        line_height_pt: float | None = None,
+        first_baseline_pt: float | None = None,
+    ) -> tuple[list[dict], float, float, set[str]]:
+        """Compute per-glyph placements for `text`.
+
+        Returns (positions, total_width_pt, total_height_pt, missing_chars)
+        where positions is a list of dicts:
+            {"x_pt", "y_baseline_pt", "glyph", "label"}
+        Missing characters (not in the library) are represented by a blank
+        space (advance only), and their labels are collected in
+        missing_chars.
+
+        `line_height_pt` / `first_baseline_pt` override the defaults when
+        snapping to external rules (e.g. blue college-rule lines).
+        """
+        import random
+
+        all_orig_h = [v.orig_h for vs in variants_by_label.values()
+                      for v in vs if v.orig_h is not None]
+        ref_h = max(all_orig_h) if all_orig_h else 10.0
+        if line_height_pt is None:
+            line_height_pt = ref_h * 1.35
+        descender_reserve = ref_h * 0.25  # room below baseline per line
+        space_advance = ref_h * 0.32
+        kerning = ref_h * 0.05
+
+        rotate_counters: dict[str, int] = {}
+        loaded_cache: dict[Path, Glyph] = {}
+
+        def _pick_variant(ch: str) -> GlyphVariant | None:
+            vs = variants_by_label.get(ch)
+            if not vs:
+                return None
+            if self.compose_random_var.get():
+                return random.choice(vs)
+            idx = rotate_counters.get(ch, 0)
+            rotate_counters[ch] = idx + 1
+            return vs[idx % len(vs)]
+
+        def _load(v: GlyphVariant) -> Glyph | None:
+            g = loaded_cache.get(v.abs_path)
+            if g is not None:
+                return g
+            try:
+                g = Glyph.from_file(v.abs_path)
+            except Exception:
+                return None
+            loaded_cache[v.abs_path] = g
+            return g
+
+        positions: list[dict] = []
+        missing: set[str] = set()
+        cur_x = 0.0
+        cur_baseline = first_baseline_pt if first_baseline_pt is not None else ref_h
+        max_x = 0.0
+
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            if ch == "\n":
+                cur_x = 0.0
+                cur_baseline += line_height_pt
+                i += 1
+                continue
+            if ch == "\t":
+                cur_x += space_advance * 4
+                if cur_x > line_width_pt:
+                    cur_x = 0.0
+                    cur_baseline += line_height_pt
+                i += 1
+                continue
+            if ch.isspace():
+                if cur_x + space_advance > line_width_pt and cur_x > 0:
+                    cur_x = 0.0
+                    cur_baseline += line_height_pt
+                else:
+                    cur_x += space_advance
+                    max_x = max(max_x, cur_x)
+                i += 1
+                continue
+
+            v = _pick_variant(ch)
+            if v is None:
+                missing.add(ch)
+                if cur_x + space_advance > line_width_pt and cur_x > 0:
+                    cur_x = 0.0
+                    cur_baseline += line_height_pt
+                cur_x += space_advance
+                max_x = max(max_x, cur_x)
+                i += 1
+                continue
+
+            g = _load(v)
+            if g is None:
+                missing.add(ch)
+                cur_x += space_advance
+                i += 1
+                continue
+
+            # Effective size for this placement = glyph.width × v.user_scale.
+            # Both offset_x and offset_y scale with user_scale so the drag
+            # reads the same visual distance on the composed page as it did
+            # in the editor.
+            scale = float(v.user_scale or 1.0)
+            g_w = g.width * scale
+            g_h = g.height * scale
+            baseline_local_scaled = float(v.baseline if v.baseline is not None else g.height) * scale
+            off_x = float(v.offset_x or 0.0) * scale
+            off_y = float(v.offset_y or 0.0) * scale
+
+            # Word-wrap: break line when the glyph would overflow.
+            if cur_x + g_w > line_width_pt and cur_x > 0:
+                cur_x = 0.0
+                cur_baseline += line_height_pt
+
+            positions.append({
+                "x_pt": cur_x + off_x,
+                "y_baseline_pt": cur_baseline,
+                "glyph": g,
+                "label": ch,
+                "baseline_local": baseline_local_scaled - off_y,
+                "scale": scale,
+                "width": g_w,
+                "height": g_h,
+                "abs_path": v.abs_path,
+            })
+            cur_x += g_w + kerning
+            max_x = max(max_x, cur_x)
+            i += 1
+
+        total_w = max(max_x, 1.0)
+        total_h = cur_baseline + descender_reserve
+        return positions, total_w, total_h, missing
+
+    def _get_centerlines_cached(self, abs_path, glyph: Glyph) -> list[dict]:
+        """Return centerline polylines for a glyph, cached by variant path.
+        First access for a variant runs compute_centerlines (~10–20 ms);
+        subsequent access is a dict lookup. Cache is cleared on library
+        reload (normalize invalidates glyph geometry)."""
+        if abs_path is not None and abs_path in self.compose_centerline_cache:
+            return self.compose_centerline_cache[abs_path]
+        try:
+            cl = compute_centerlines(glyph)
+        except Exception:
+            cl = []
+        if abs_path is not None:
+            self.compose_centerline_cache[abs_path] = cl
+        return cl
+
+    # Page-break markers. A line whose stripped content matches any of
+    # these (case-insensitive) starts a new page. `\f` (form feed) is also
+    # honoured for pasted content from word processors.
+    PAGE_BREAK_TOKENS = ("---PAGE---", "[PAGE]", "\\PAGE", "<PAGEBREAK>")
+
+    @classmethod
+    def _split_pages(cls, text: str) -> list[str]:
+        """Split `text` into one string per page on page-break markers."""
+        tokens = {t.upper() for t in cls.PAGE_BREAK_TOKENS}
+        pages: list[list[str]] = [[]]
+        for line in text.split("\n"):
+            if "\f" in line:
+                # Form feed splits the line itself — respect it.
+                parts = line.split("\f")
+                pages[-1].append(parts[0])
+                for part in parts[1:]:
+                    pages.append([part])
+                continue
+            if line.strip().upper() in tokens:
+                pages.append([])
+                continue
+            pages[-1].append(line)
+        return ["\n".join(p) for p in pages]
+
+    def _render_single_page(
+        self,
+        text: str,
+        variants_by_label: dict[str, list[GlyphVariant]],
+        *,
+        page_w_pt: float,
+        page_h_pt: float,
+        margin_pt: float,
+        px_per_pt: float,
+    ) -> tuple["Image.Image", list[dict], float, set[str],
+               float, float, float]:
+        """Render one page and return (img, positions, overflow_pt,
+        missing_runtime, eff_margin_x_pt, eff_margin_y_pt, content_h_pt)."""
+        RULE_LEFT_MARGIN_PT = 90.0
+        RULE_LINE_SPACING_PT = 9.0 / 32.0 * 72.0
+        RULE_FIRST_LINE_PT = 72.0
+
+        if self.compose_ruled_paper_var.get():
+            RULE_LEFT_GAP_PT = 4.0
+            eff_margin_x_pt = RULE_LEFT_MARGIN_PT + RULE_LEFT_GAP_PT
+            eff_margin_y_pt = 0.0
+            line_height_override: float | None = RULE_LINE_SPACING_PT
+            first_baseline_override: float | None = (
+                RULE_FIRST_LINE_PT + RULE_LINE_SPACING_PT
+            )
+            line_width_pt = max(10.0, page_w_pt - eff_margin_x_pt - margin_pt)
+        else:
+            eff_margin_x_pt = margin_pt
+            eff_margin_y_pt = margin_pt
+            line_height_override = None
+            first_baseline_override = None
+            line_width_pt = max(10.0, page_w_pt - 2.0 * margin_pt)
+
+        positions, _total_w_pt, content_h_pt, missing_runtime = self._layout_text(
+            text, variants_by_label, line_width_pt,
+            line_height_pt=line_height_override,
+            first_baseline_pt=first_baseline_override,
+        )
+
+        W = max(1, int(round(page_w_pt * px_per_pt)))
+        H = max(1, int(round(page_h_pt * px_per_pt)))
+        overflow_pt = max(
+            0.0,
+            (content_h_pt + eff_margin_y_pt) - (page_h_pt - margin_pt),
+        )
+
+        img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+        page_draw = ImageDraw.Draw(img)
+        page_draw.rectangle((0, 0, W - 1, H - 1),
+                             outline=(150, 150, 150, 255), width=1)
+
+        if self.compose_ruled_paper_var.get():
+            RULE_LINE_WIDTH_PX = max(1, int(round(0.5 * px_per_pt)))
+            blue = (170, 200, 230, 220)
+            red = (220, 110, 110, 220)
+
+            y_pt = RULE_FIRST_LINE_PT
+            while y_pt < page_h_pt - 18.0:
+                y_px = int(round(y_pt * px_per_pt))
+                page_draw.line(
+                    [(0, y_px), (W - 1, y_px)],
+                    fill=blue, width=RULE_LINE_WIDTH_PX,
+                )
+                y_pt += RULE_LINE_SPACING_PT
+
+            margin_x_px = int(round(RULE_LEFT_MARGIN_PT * px_per_pt))
+            page_draw.line(
+                [(margin_x_px, 0), (margin_x_px, H - 1)],
+                fill=red, width=RULE_LINE_WIDTH_PX,
+            )
+
+        thickness_pt = max(0.05, float(self.compose_thickness_var.get()))
+        thickness_px = max(1, int(round(thickness_pt * px_per_pt)))
+        ink_rgba = (20, 20, 20, 255)
+        stroke_draw = ImageDraw.Draw(img)
+
+        for item in positions:
+            g: Glyph = item["glyph"]
+            scale = float(item.get("scale", 1.0))
+            placed_h = float(item.get("height", g.height))
+            abs_path = item.get("abs_path")
+            baseline_local = item.get("baseline_local") or placed_h
+
+            centerlines = self._get_centerlines_cached(abs_path, g)
+            if not centerlines:
+                continue
+
+            glyph_top_pt = float(item["y_baseline_pt"]) - float(baseline_local)
+            origin_x_pt = eff_margin_x_pt + float(item["x_pt"])
+            origin_y_pt = eff_margin_y_pt + glyph_top_pt
+
+            for stroke in centerlines:
+                pts = stroke.get("points", [])
+                if len(pts) < 2:
+                    continue
+                coords: list[tuple[float, float]] = []
+                for gx, gy in pts:
+                    px = (origin_x_pt + gx * scale) * px_per_pt
+                    py = (origin_y_pt + gy * scale) * px_per_pt
+                    coords.append((px, py))
+                if stroke.get("closed") and coords[0] != coords[-1]:
+                    coords.append(coords[0])
+                stroke_draw.line(
+                    coords, fill=ink_rgba,
+                    width=thickness_px, joint="curve",
+                )
+
+                if self.compose_vectors_show_var.get():
+                    stroke_draw.line(
+                        coords, fill=(220, 30, 30, 255),
+                        width=1, joint="curve",
+                    )
+
+        return (img, positions, overflow_pt, missing_runtime,
+                eff_margin_x_pt, eff_margin_y_pt, content_h_pt)
+
+    def on_compose_render(self) -> None:
+        text = self.compose_text.get("1.0", "end-1c")
+        if not text.strip():
+            self.compose_status.set("Text is empty.")
+            return
+        if not self.variants:
+            messagebox.showinfo(
+                "No glyphs loaded",
+                "Import a PDF or load a glyph library first.",
+            )
+            return
+
+        variants_by_label = self._variants_by_label()
+
+        # Missing-character check before doing any work. Skip page-break
+        # marker lines when scanning so their '-' or '[' chars don't get
+        # flagged as missing when those characters aren't in the library.
+        page_texts_for_check = self._split_pages(text)
+        check_text = "\n".join(page_texts_for_check)
+        missing_chars = {
+            ch for ch in check_text
+            if (not ch.isspace()) and (ch not in variants_by_label)
+        }
+        if missing_chars:
+            listed = ", ".join(repr(c) for c in sorted(missing_chars))
+            if not messagebox.askyesno(
+                "Missing characters",
+                f"The library has no glyphs for: {listed}\n\n"
+                "Render anyway, leaving blank space for each missing character?",
+            ):
+                return
+
+        # Letter portrait: 8.5 × 11 in in PDF points (72 pt/in).
+        PAGE_W_PT = 612.0
+        PAGE_H_PT = 792.0
+        # Internal render resolution — decoupled from the user's zoom so
+        # strokes stay crisp when the preview is shrunk to fit the window
+        # and when the user zooms in. 3 px/pt → 1836×2376 px page; with
+        # LANCZOS resample on display, edges stay smooth at any zoom ≤ 3.
+        # Higher (4+) looks marginally better but makes the first render
+        # (no centerline cache) take 10s+.
+        RENDER_PX_PER_PT = 3.0
+        margin_pt = max(0.0, float(self.compose_margin_var.get())) * 72.0
+        px_per_pt = RENDER_PX_PER_PT
+        zoom = max(0.1, float(self.compose_scale_var.get()))
+
+        # Split text on page-break markers. Empty pages (e.g. trailing
+        # break) are dropped so we don't render blank pages nobody asked
+        # for.
+        page_texts = [p for p in self._split_pages(text) if p.strip()]
+        if not page_texts:
+            self.compose_status.set("Text is empty.")
+            return
+
+        page_images: list["Image.Image"] = []
+        page_layouts: list[list[dict]] = []
+        total_glyphs = 0
+        total_overflow_pt = 0.0
+        all_missing: set[str] = set()
+        eff_margin_x_pt = margin_pt
+        eff_margin_y_pt = margin_pt
+
+        for page_idx, page_text in enumerate(page_texts):
+            (img, positions, overflow_pt, missing_runtime,
+             eff_margin_x_pt, eff_margin_y_pt, _content_h_pt) = (
+                self._render_single_page(
+                    page_text, variants_by_label,
+                    page_w_pt=PAGE_W_PT, page_h_pt=PAGE_H_PT,
+                    margin_pt=margin_pt, px_per_pt=px_per_pt,
+                )
+            )
+            for p in positions:
+                p["page"] = page_idx
+            page_images.append(img)
+            page_layouts.append(positions)
+            total_glyphs += len(positions)
+            total_overflow_pt = max(total_overflow_pt, overflow_pt)
+            all_missing |= missing_runtime
+
+        # Combine all pages into one tall image (for PNG export). Pages
+        # are stacked vertically with a thin gap filled with page-gutter
+        # grey so they read as distinct sheets.
+        W = page_images[0].width
+        H_single = page_images[0].height
+        gap_px = max(1, int(round(12.0 * px_per_pt)))   # ~12 pt gap
+        total_h = H_single * len(page_images) + gap_px * max(0, len(page_images) - 1)
+        combined = Image.new("RGBA", (W, total_h), (220, 220, 220, 255))
+        y = 0
+        for img in page_images:
+            combined.paste(img, (0, y))
+            y += H_single + gap_px
+
+        self.compose_last_image = combined
+        self.compose_last_text = text
+        self.compose_layout = [p for layout in page_layouts for p in layout]
+        self.compose_page_layouts = page_layouts
+        self.compose_page_pt = (PAGE_W_PT, PAGE_H_PT)
+        self.compose_margin_pt = margin_pt
+        self.compose_margin_x_pt = eff_margin_x_pt
+        self.compose_margin_y_pt = eff_margin_y_pt
+
+        try:
+            self.compose_canvas.update_idletasks()
+        except Exception:
+            pass
+        canvas_w = max(200, self.compose_canvas.winfo_width())
+        canvas_h = max(200, self.compose_canvas.winfo_height())
+        # Fit-to-canvas: zoom=1 means ONE page fits the preview; extra
+        # pages extend below and are reachable via the vertical scrollbar.
+        inner_w = max(50, canvas_w - 16)
+        inner_h = max(50, canvas_h - 16)
+        fit_scale = min(inner_w / PAGE_W_PT, inner_h / PAGE_H_PT)
+        display_px_per_pt = max(0.1, fit_scale * zoom)
+        disp_w = max(1, int(round(PAGE_W_PT * display_px_per_pt)))
+        disp_h_page = max(1, int(round(PAGE_H_PT * display_px_per_pt)))
+        disp_gap = max(6, int(round(12.0 * display_px_per_pt)))
+
+        self.compose_canvas.delete("all")
+        # Keep a reference list so Tk doesn't GC the PhotoImages.
+        self.compose_photo_refs = []
+        y_display = 0
+        for img in page_images:
+            display_img = img.resize((disp_w, disp_h_page), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(display_img.convert("RGB"))
+            self.compose_photo_refs.append(photo)
+            self.compose_canvas.create_image(
+                0, y_display, image=photo, anchor="nw",
+            )
+            y_display += disp_h_page + disp_gap
+        # Single-page legacy ref so old code paths (and PNG preview of
+        # first page) still work.
+        self.compose_photo_ref = (
+            self.compose_photo_refs[0] if self.compose_photo_refs else None
+        )
+        total_disp_h = max(disp_h_page,
+                           y_display - disp_gap if page_images else disp_h_page)
+        self.compose_canvas.configure(
+            scrollregion=(0, 0, disp_w, total_disp_h),
+        )
+
+        notes = []
+        if all_missing:
+            notes.append(
+                "Missing (blanked): "
+                + ", ".join(repr(c) for c in sorted(all_missing))
+            )
+        if total_overflow_pt > 0:
+            notes.append(
+                f"Text overflows page by {total_overflow_pt / 72.0:.2f} in"
+            )
+        note_str = "  |  ".join(notes)
+        page_count = len(page_images)
+        page_desc = f"{page_count} page" + ("s" if page_count != 1 else "")
+        self.compose_status.set(
+            f"8.5×11 in — {page_desc} @ zoom {zoom:.2f}× "
+            f"(render {px_per_pt:g} px/pt) — "
+            f"{total_glyphs} glyphs, margin {margin_pt / 72.0:.2f} in."
+            + (f"  {note_str}" if note_str else "")
+        )
+
+    def on_compose_save_png(self) -> None:
+        if self.compose_last_image is None:
+            messagebox.showinfo("Nothing to save", "Render the text first.")
+            return
+        path_str = filedialog.asksaveasfilename(
+            parent=self.root, title="Save rendered text as PNG",
+            defaultextension=".png",
+            filetypes=[("PNG", "*.png"), ("All files", "*.*")],
+        )
+        if not path_str:
+            return
+        try:
+            self.compose_last_image.convert("RGB").save(path_str)
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("Save failed", str(ex))
+            return
+        self.compose_status.set(f"Wrote {path_str}")
+
+    def on_compose_save_svg(self) -> None:
+        """Export the composed layout as SVG, translating each glyph's
+        path 'd' into page coordinates. Coordinates are in PDF points so
+        a plotter can scale it to any physical size. Multi-page docs emit
+        one SVG per page (suffixed _p1, _p2, ...) since most plotters
+        feed one physical sheet at a time."""
+        page_layouts: list[list[dict]] = getattr(
+            self, "compose_page_layouts", [self.compose_layout]
+        )
+        if not page_layouts or not any(page_layouts):
+            messagebox.showinfo("Nothing to save", "Render the text first.")
+            return
+        path_str = filedialog.asksaveasfilename(
+            parent=self.root, title="Save composed SVG",
+            defaultextension=".svg",
+            filetypes=[("SVG", "*.svg"), ("All files", "*.*")],
+        )
+        if not path_str:
+            return
+
+        page_w, page_h = getattr(self, "compose_page_pt", (612.0, 792.0))
+        margin_pt = getattr(self, "compose_margin_pt", 36.0)
+        margin_x_pt = getattr(self, "compose_margin_x_pt", margin_pt)
+        margin_y_pt = getattr(self, "compose_margin_y_pt", margin_pt)
+
+        thickness_pt = max(0.05, float(self.compose_thickness_var.get()))
+
+        def _path_d(pts: list[tuple[float, float]], closed: bool) -> str:
+            if len(pts) < 2:
+                return ""
+            head = f"M {pts[0][0]:.3f} {pts[0][1]:.3f}"
+            rest = " ".join(f"L {x:.3f} {y:.3f}" for x, y in pts[1:])
+            return (head + " " + rest + (" Z" if closed else "")).strip()
+
+        def _render_svg(page_positions: list[dict]) -> str:
+            parts: list[str] = [
+                f'<svg xmlns="http://www.w3.org/2000/svg" '
+                f'viewBox="0 0 {page_w:.3f} {page_h:.3f}" '
+                f'width="{page_w / 72.0:.3f}in" '
+                f'height="{page_h / 72.0:.3f}in">',
+                f'<g fill="none" stroke="black" '
+                f'stroke-width="{thickness_pt:.3f}" '
+                f'stroke-linecap="round" stroke-linejoin="round">',
+            ]
+            for item in page_positions:
+                g: Glyph = item["glyph"]
+                sc = float(item.get("scale", 1.0))
+                placed_h = float(item.get("height", g.height))
+                baseline_local = item.get("baseline_local") or placed_h
+                abs_path = item.get("abs_path")
+                centerlines = self._get_centerlines_cached(abs_path, g)
+                if not centerlines:
+                    continue
+                origin_x = margin_x_pt + float(item["x_pt"])
+                origin_y = (
+                    margin_y_pt + float(item["y_baseline_pt"])
+                    - float(baseline_local)
+                )
+                for stroke in centerlines:
+                    pts = stroke.get("points", [])
+                    if len(pts) < 2:
+                        continue
+                    page_pts = [
+                        (origin_x + gx * sc, origin_y + gy * sc)
+                        for gx, gy in pts
+                    ]
+                    closed = bool(stroke.get("closed"))
+                    d = _path_d(page_pts, closed)
+                    if d:
+                        parts.append(f'<path d="{d}"/>')
+            parts.append("</g>")
+            parts.append("</svg>")
+            return "\n".join(parts)
+
+        base = Path(path_str)
+        written: list[str] = []
+        try:
+            if len(page_layouts) == 1:
+                base.write_text(_render_svg(page_layouts[0]), encoding="utf-8")
+                written.append(str(base))
+            else:
+                stem = base.stem
+                for idx, page_positions in enumerate(page_layouts, start=1):
+                    out = base.with_name(f"{stem}_p{idx}{base.suffix}")
+                    out.write_text(
+                        _render_svg(page_positions), encoding="utf-8"
+                    )
+                    written.append(str(out))
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("Save failed", str(ex))
+            return
+        if len(written) == 1:
+            self.compose_status.set(f"Wrote {written[0]}")
+        else:
+            self.compose_status.set(
+                f"Wrote {len(written)} files "
+                f"({written[0]} … {written[-1]})"
+            )
 
     # ── Library / grid ──────────────────────────────────────────────────
 
@@ -327,12 +1111,112 @@ class SvgGlyphEditorApp:
         self.library_paths = parse_library_paths([self.libs_var.get()])
         self.reload_variants()
 
+    def on_import_pdf_clicked(self) -> None:
+        """Pick a PDF, run OCR + vector extraction, then load the resulting
+        glyph library. The pipeline takes ~5-15 s on a single page — we run
+        it synchronously with live status updates instead of threading so we
+        don't have to fight Tk's single-threaded widget model."""
+        base_dir = Path(__file__).resolve().parent
+        pdf_path_str = filedialog.askopenfilename(
+            parent=self.root,
+            title="Select handwriting PDF",
+            filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
+            initialdir=str(base_dir / "handwriting_raw"),
+        )
+        if not pdf_path_str:
+            return
+        pdf_path = Path(pdf_path_str)
+
+        default_out = base_dir / "glyphs_vector"
+        out_dir_str = filedialog.askdirectory(
+            parent=self.root,
+            title="Output library folder (new or existing; existing glyphs will be merged)",
+            initialdir=str(default_out if default_out.exists() else base_dir),
+            mustexist=False,
+        )
+        if not out_dir_str:
+            return
+        out_dir = Path(out_dir_str)
+
+        # If the user picked an existing library with glyphs, warn about
+        # merge semantics (new variants get appended, same-label variants
+        # get higher _N suffixes; filenames won't collide because we read
+        # the counter from an empty dict — so current importer OVERWRITES
+        # files starting from _0). Offer to write into a subfolder instead.
+        existing_index = out_dir / "index.json"
+        if existing_index.exists():
+            if not messagebox.askyesno(
+                "Overwrite warning",
+                f"{out_dir} already contains an index.json.\n\n"
+                "Importing will overwrite per-label SVGs starting from _0 and "
+                "replace the index. Continue?",
+            ):
+                return
+
+        self._set_status(f"Importing {pdf_path.name}…")
+        self.root.config(cursor="wait")
+        try:
+            from pdf_to_vector_glyphs import import_pdf_to_library
+
+            def _progress(msg: str) -> None:
+                self._set_status(msg)
+
+            stats = import_pdf_to_library(
+                pdf_path=pdf_path,
+                out_dir=out_dir,
+                progress=_progress,
+            )
+        except Exception as ex:  # noqa: BLE001
+            self.root.config(cursor="")
+            self._set_status("")
+            messagebox.showerror(
+                "Import failed",
+                f"{pdf_path.name}\n\n{type(ex).__name__}: {ex}",
+            )
+            return
+        finally:
+            self.root.config(cursor="")
+
+        self._set_status(
+            f"Imported {stats['total_written']} glyphs "
+            f"({stats['n_unique_labels']} labels) from {pdf_path.name}"
+        )
+
+        # Point the library entry at the new folder and reload.
+        self.libs_var.set(str(out_dir))
+        self.library_paths = parse_library_paths([str(out_dir)])
+        self.reload_variants()
+
+    def _set_status(self, msg: str) -> None:
+        self.status_var.set(msg)
+        # update_idletasks forces the Tk event loop to repaint the label
+        # without re-entering user event handlers — safe to call from the
+        # middle of a synchronous operation.
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
     def reload_variants(self) -> None:
         self.variants = load_variants(self.library_paths)
+        # Invalidate compose centerline cache — library may have been
+        # normalized or PDF-imported, which changes glyph geometry.
+        if hasattr(self, "compose_centerline_cache"):
+            self.compose_centerline_cache.clear()
 
         all_orig_h = [v.orig_h for v in self.variants
                       if v.orig_h is not None]
         self.ref_orig_h = float(statistics.median(all_orig_h)) if all_orig_h else 8.0
+        # Library-wide max (actually 95th percentile to ignore OCR-junk
+        # outliers). Used as the display-scale DENOMINATOR so the library's
+        # tallest glyph fills the canvas line box and all other glyphs are
+        # proportionally smaller — preserving 'H' taller than 'o' etc.
+        if all_orig_h:
+            sorted_h = sorted(all_orig_h)
+            idx = max(0, int(len(sorted_h) * 0.95) - 1)
+            self.max_orig_h = float(sorted_h[idx])
+        else:
+            self.max_orig_h = self.ref_orig_h
         lower_orig_h = [v.orig_h for v in self.variants
                         if v.orig_h is not None and is_single_lower_ascii(v.label)]
         if lower_orig_h:
@@ -379,7 +1263,12 @@ class SvgGlyphEditorApp:
         if variant.abs_path.exists():
             try:
                 g = Glyph.from_file(variant.abs_path)
-                img = rasterize_glyph(g, self.thumb_box, self.thumb_box, pad=6)
+                # Coarse bezier sampling — thumbnails are 90 px, fine curve
+                # detail is invisible and halves the non-zero scanline cost.
+                img = rasterize_glyph(
+                    g, self.thumb_box, self.thumb_box,
+                    pad=6, n_per_bezier=4,
+                )
                 canvas.paste(img.convert("RGB"), mask=img.split()[3])
             except Exception:
                 miss = Image.new("RGBA", (self.thumb_box, self.thumb_box), (255, 0, 0, 55))
@@ -472,10 +1361,17 @@ class SvgGlyphEditorApp:
         except Exception:
             self.editor_centerlines = []
 
-        self.editor_offset_x = 0.0
-        self.editor_offset_y = 0.0
-        self._set_glyph_scale(1.0, redraw=False)
-        self.pending_auto_fit = bool(self.auto_fit_var.get())
+        # Baseline defaults to bottom of the glyph when unknown (matches the
+        # old "bottom-align" behaviour for non-descender chars).
+        self.editor_baseline = (
+            float(v.baseline) if v.baseline is not None
+            else float(self.editor_glyph.height)
+        )
+        # Restore user-editable state from index. Drag and slider mutate
+        # these; Save persists them verbatim.
+        self.editor_offset_x = float(v.offset_x or 0.0)
+        self.editor_offset_y = float(v.offset_y or 0.0)
+        self._set_glyph_scale(float(v.user_scale or 1.0), redraw=False)
 
         self.sel_label_var.set(f"Label: {v.label}")
         self.sel_lib_var.set(f"Library: {v.lib_path}")
@@ -489,6 +1385,62 @@ class SvgGlyphEditorApp:
 
     # ── Editor rendering ────────────────────────────────────────────────
 
+    # Windows TTF filenames for the families we use as guide fonts.
+    _FAMILY_TO_TTF = {
+        "Times New Roman": "times.ttf",
+        "Arial": "arial.ttf",
+        "Courier New": "cour.ttf",
+        "Consolas": "consola.ttf",
+    }
+
+    def _get_pil_font(self, size_px: int) -> "ImageFont.FreeTypeFont | None":
+        """Look up or build a PIL FreeType font for the current guide
+        family at `size_px`. Used to measure real ink bboxes per character
+        (Tk's canvas bbox returns the line box, which is identical for
+        every letter and therefore useless for per-glyph sizing)."""
+        key = (self.guide_family, int(size_px))
+        font = self._pil_font_cache.get(key)
+        if font is not None:
+            return font
+        ttf = self._FAMILY_TO_TTF.get(self.guide_family, "arial.ttf")
+        for candidate in (ttf, "arial.ttf"):
+            try:
+                font = ImageFont.truetype(candidate, int(size_px))
+                break
+            except Exception:
+                font = None
+        if font is not None:
+            self._pil_font_cache[key] = font
+        return font
+
+    def _guide_ink_bbox_px(
+        self, label: str, gsize: int, baseline_y: int, center_x: int,
+    ) -> tuple[int, int, int, int] | None:
+        """Return the expected CANVAS-pixel ink bbox of the Tk-rendered
+        guide letter for this label — computed via PIL so it reflects the
+        actual ink extent (not the font line box). Coordinates are aligned
+        assuming the guide was drawn with its typographic baseline at
+        `baseline_y` and centred on `center_x`."""
+        pil_font = self._get_pil_font(gsize)
+        if pil_font is None:
+            return None
+        try:
+            bb = pil_font.getbbox(label)
+            ascent_px = pil_font.getmetrics()[0]
+        except Exception:
+            return None
+        if bb is None:
+            return None
+        # bb is (left, top, right, bottom) in the font's local box, where
+        # the baseline sits at y = ascent_px. Translate to canvas coords
+        # with baseline pinned at baseline_y and the character centred.
+        ink_w = bb[2] - bb[0]
+        x_left = int(round(center_x - ink_w / 2))
+        x_right = x_left + int(round(ink_w))
+        y_top = int(round(baseline_y - (ascent_px - bb[1])))
+        y_bot = int(round(baseline_y + (bb[3] - ascent_px)))
+        return (x_left, y_top, x_right, y_bot)
+
     def _guide_ratio_for_variant(self, v: GlyphVariant) -> float:
         ratio = 1.0
         if self.ref_orig_h > 0:
@@ -501,103 +1453,116 @@ class SvgGlyphEditorApp:
             ratio = max(ratio, self.lowercase_floor_ratio)
         return ratio
 
-    def _glyph_working_view(self) -> Glyph | None:
-        """Return the current editor_glyph with user_scale and offset applied,
-        ready for rendering. None if nothing loaded."""
-        if self.editor_glyph is None:
-            return None
-        g = self.editor_glyph
-        if abs(self.glyph_user_scale - 1.0) > 1e-6:
-            g = g.apply_transform(sx=self.glyph_user_scale)
-        if abs(self.editor_offset_x) > 1e-9 or abs(self.editor_offset_y) > 1e-9:
-            g = g.translate_only(self.editor_offset_x, self.editor_offset_y)
-        return g
-
     def redraw_editor(self) -> None:
+        """Fixed-geometry render. The canvas has a fixed baseline line and a
+        "line box" that defines the target glyph height; glyphs are scaled
+        to fill that box and positioned by their baseline metadata. User
+        scale and drag layer on top as simple multiplicative/additive
+        adjustments — no apply_transform during render, so geometry isn't
+        re-cropped between frames and saves behave predictably."""
         self.editor_canvas.delete("all")
         if self.editor_glyph is None:
             return
         cw = max(10, self.editor_canvas.winfo_width())
         ch = max(10, self.editor_canvas.winfo_height())
 
-        # Checker background.
+        # Background.
         bg = self.checker_bg(cw, ch, s=14)
         bg_photo = ImageTk.PhotoImage(bg)
-        self.editor_photo_ref = bg_photo
+        self.editor_bg_ref = bg_photo
         self.editor_canvas.create_image(0, 0, image=bg_photo, anchor="nw")
 
+        # Fixed canvas geometry: baseline near lower third, cap line above,
+        # descender reserve below. These set the "line box" glyphs fit into.
         center_x = cw // 2
-        baseline_y = int(ch * 0.72)
+        baseline_y = int(ch * 0.70)
+        cap_above_px = int(ch * 0.42)   # cap-to-baseline target
+        descender_px = int(ch * 0.20)   # baseline-to-descender reserve
         self.last_baseline_y = baseline_y
         self.last_guide_bbox = None
 
         v = self.current_variant()
-        max_h = max(40, ch - 120)
-        avail_above_baseline = max(40, baseline_y - 10)
 
-        # Choose an effective ref_h that fits BOTH the glyph and the guide.
-        ref_h = max(72, int(ch * self.guide_preview_height_ratio))
-        glyph_ratio = 1.0
-        guide_ratio = 1.0
-        if v is not None and v.orig_h is not None and self.ref_orig_h > 0:
-            glyph_ratio = float(v.orig_h) / float(self.ref_orig_h)
-            guide_ratio = self._guide_ratio_for_variant(v)
-            scale_for_user = max(1.0, float(self.glyph_user_scale))
-            needed = max(glyph_ratio * scale_for_user, guide_ratio, 1.0)
-            if ref_h * needed > avail_above_baseline:
-                ref_h = max(40, int(round(avail_above_baseline / needed)))
-
-        # Draw the reference font letter.
+        # Draw the reference font letter with TYPOGRAPHIC baseline aligned
+        # to baseline_y (so 'g', 'y', '$', etc. naturally descend below).
+        # last_guide_bbox is set from PIL's per-char ink bbox, NOT Tk's
+        # canvas.bbox (which returns the font line-box — identical for all
+        # characters and useless for per-glyph alignment).
         if self.guide_show_var.get() and v is not None and v.label:
-            target_h = max(24, int(round(ref_h * guide_ratio)))
-            gsize = max(12, target_h)
-            gid = self.editor_canvas.create_text(
-                center_x, baseline_y, text=v.label, fill="#9a9a9a",
-                font=(self.guide_family, gsize), anchor="s",
+            gsize = max(12, cap_above_px)
+            font_obj = tkfont.Font(family=self.guide_family, size=-gsize)
+            ascent = font_obj.metrics("ascent")
+            if ascent > 0 and ascent != cap_above_px:
+                gsize = max(12, int(round(gsize * cap_above_px / max(1, ascent))))
+                font_obj = tkfont.Font(family=self.guide_family, size=-gsize)
+                ascent = font_obj.metrics("ascent")
+            self.editor_canvas.create_text(
+                center_x, baseline_y - ascent, text=v.label,
+                fill="#bcbcbc",
+                font=font_obj, anchor="n",
             )
-            bbox = self.editor_canvas.bbox(gid)
-            if bbox is not None:
-                gh = max(1, bbox[3] - bbox[1])
-                refined = max(12, int(round(gsize * target_h / gh)))
-                self.editor_canvas.itemconfigure(
-                    gid, font=(self.guide_family, refined))
-                self.last_guide_bbox = self.editor_canvas.bbox(gid)
+            # Measure the TRUE ink bbox via PIL; Tk canvas.bbox returns the
+            # font line-box height for every letter.
+            self.last_guide_bbox = self._guide_ink_bbox_px(
+                v.label, gsize, baseline_y, center_x,
+            )
 
-        # Display-scale the glyph so its height lands at ref_h * glyph_ratio.
-        # (Matches the raster editor's invariant: on save the glyph stays the
-        # same visible size relative to the guide.)
-        g_view = self._glyph_working_view()
-        if g_view is None:
-            return
-
-        if v is not None and v.orig_h is not None and self.ref_orig_h > 0:
-            target_display_h = ref_h * glyph_ratio
-            self.editor_scale = target_display_h / max(1e-6, self.editor_glyph.height)
+        # Auto-fit-by-default: scale this glyph so its HEIGHT matches the
+        # guide's rendered bbox. The guide is a typed font letter, so Tk
+        # already handles character-class sizing ('o' small, 'H' big, 'g'
+        # with descender). Matching the guide bbox makes every loaded glyph
+        # land at the typographically-appropriate size without per-glyph
+        # setup — the editor becomes "cleanup only".
+        #
+        # Fallback (no guide drawn): use the library-wide max_orig_h so all
+        # glyphs at least share a consistent reference scale.
+        target_line_h_px = cap_above_px + descender_px
+        if self.last_guide_bbox is not None:
+            gy0 = self.last_guide_bbox[1]
+            gy1 = self.last_guide_bbox[3]
+            guide_h_px = max(1, gy1 - gy0)
+            base_scale = guide_h_px / max(1.0, float(self.editor_glyph.height))
         else:
-            self.editor_scale = (
-                (ch - 120) / max(1.0, self.editor_glyph.height or 1.0)
+            ref_h = float(self.max_orig_h) if self.max_orig_h > 0 else float(self.editor_glyph.height)
+            base_scale = target_line_h_px / max(1.0, ref_h)
+        display_scale = base_scale * max(0.05, float(self.glyph_user_scale))
+        self.editor_scale = display_scale
+
+        # Glyph position. When a guide is drawn, align the glyph's INK BBOX
+        # top to the guide's ink bbox top — this matches the character
+        # visually regardless of baseline-measurement noise in the data.
+        # Without a guide, fall back to baseline-aligned positioning.
+        off_x_px = self.editor_offset_x * display_scale
+        off_y_px = self.editor_offset_y * display_scale
+        glyph_w_px = max(1, int(round(self.editor_glyph.width * display_scale)))
+        glyph_h_px = max(1, int(round(self.editor_glyph.height * display_scale)))
+        glyph_left_px = center_x - glyph_w_px / 2 + off_x_px
+        if self.last_guide_bbox is not None:
+            glyph_top_px = float(self.last_guide_bbox[1]) + off_y_px
+        else:
+            baseline_local = (
+                float(self.editor_baseline)
+                if self.editor_baseline is not None
+                else float(self.editor_glyph.height)
             )
-        self.editor_scale = max(0.05, min(self.editor_scale, 400.0))
+            glyph_top_px = (
+                baseline_y - baseline_local * display_scale + off_y_px
+            )
 
-        # Pending auto-fit executes once per load, using the guide bbox from
-        # the draw we just did.
-        if self.pending_auto_fit and self.auto_fit_var.get():
-            self.pending_auto_fit = False
-            self.auto_fit_current_glyph(redraw=False)
-            g_view = self._glyph_working_view()
-
-        # Rasterize the current glyph view at the display size and paste.
-        disp_w = max(1, int(round(g_view.width * self.editor_scale)))
-        disp_h = max(1, int(round(g_view.height * self.editor_scale)))
-        raster = rasterize_glyph(g_view, disp_w, disp_h, pad=0,
-                                 fg=(20, 20, 20, 235))
-        px = center_x - (disp_w // 2)
-        py = baseline_y - disp_h
+        # Rasterize the glyph AT ITS NATURAL GEOMETRY (no apply_transform).
+        raster = rasterize_glyph(
+            self.editor_glyph, glyph_w_px, glyph_h_px,
+            pad=0, fg=(20, 20, 20, 235),
+        )
         photo = ImageTk.PhotoImage(raster)
-        self.editor_photo_ref = photo  # keep ref to both bg & glyph
-        self.editor_canvas.create_image(px, py, image=photo, anchor="nw")
+        self.editor_photo_ref = photo
+        self.editor_canvas.create_image(
+            int(round(glyph_left_px)), int(round(glyph_top_px)),
+            image=photo, anchor="nw",
+        )
 
-        # Centerline overlay (medial axis of the filled glyph).
+        # Centerline overlay — base glyph points mapped through the same
+        # display transform the rasteriser uses.
         if (self.centerline_show_var.get()
                 and self.editor_centerlines
                 and self.editor_glyph is not None):
@@ -605,40 +1570,39 @@ class SvgGlyphEditorApp:
                 pts = stroke.get("points", [])
                 if len(pts) < 2:
                     continue
-                # Base glyph -> g_view space (scale + recrop + translate).
-                gpts = transform_centerline_polyline(
-                    pts, self.editor_glyph,
-                    self.glyph_user_scale,
-                    self.editor_offset_x, self.editor_offset_y,
-                )
-                if stroke.get("closed") and gpts and gpts[0] != gpts[-1]:
-                    gpts = list(gpts) + [gpts[0]]
                 coords: list[float] = []
-                for gx, gy in gpts:
-                    coords.append(px + gx * self.editor_scale)
-                    coords.append(py + gy * self.editor_scale)
+                for gx, gy in pts:
+                    coords.append(glyph_left_px + gx * display_scale)
+                    coords.append(glyph_top_px + gy * display_scale)
+                if stroke.get("closed") and len(coords) >= 4:
+                    coords.extend(coords[:2])
                 if len(coords) >= 4:
                     self.editor_canvas.create_line(
                         *coords, fill="#dc1e1e", width=2, smooth=False,
                     )
 
-        # Frame + baseline.
-        fx0 = px
-        fy0 = py
-        fx1 = px + disp_w
-        fy1 = baseline_y
-        if self.last_guide_bbox is not None:
-            gx0, gy0, gx1, gy1 = self.last_guide_bbox
-            fx0 = min(fx0, gx0)
-            fy0 = min(fy0, gy0)
-            fx1 = max(fx1, gx1)
-            fy1 = max(fy1, gy1)
-        self.editor_canvas.create_rectangle(fx0, fy0, fx1, fy1, outline="#4b4b4b")
-        self.editor_canvas.create_line(20, baseline_y, cw - 20, baseline_y,
-                                        fill="#7d7d7d", dash=(3, 3))
+        # Baseline line (dashed) + frame around the glyph.
+        self.editor_canvas.create_line(
+            20, baseline_y, cw - 20, baseline_y,
+            fill="#7d7d7d", dash=(3, 3),
+        )
+        fx0 = int(round(glyph_left_px))
+        fy0 = int(round(glyph_top_px))
+        fx1 = fx0 + glyph_w_px
+        fy1 = fy0 + glyph_h_px
+        self.editor_canvas.create_rectangle(
+            fx0, fy0, fx1, fy1, outline="#4b4b4b",
+        )
 
+        effective_baseline = (
+            (float(self.editor_baseline)
+             if self.editor_baseline is not None
+             else float(self.editor_glyph.height))
+            * float(self.glyph_user_scale) - float(self.editor_offset_y)
+        )
         self.sel_offset_var.set(
-            f"Offset: ({self.editor_offset_x:.2f}, {self.editor_offset_y:.2f})"
+            f"Offset: ({self.editor_offset_x:+.2f}, {self.editor_offset_y:+.2f}) pt  "
+            f"baseline: {effective_baseline:.2f} pt"
         )
 
     # ── Mouse / keyboard ────────────────────────────────────────────────
@@ -701,72 +1665,92 @@ class SvgGlyphEditorApp:
     # ── Auto-fit ────────────────────────────────────────────────────────
 
     def auto_fit_current_glyph(self, redraw: bool = True) -> None:
-        if self.editor_glyph is None or self.last_guide_bbox is None:
+        """Snap the glyph to fill the canvas line box — i.e. reset the
+        user scale to 1.0. In the new render model the line box IS the
+        fitting target (display_scale already fits editor_glyph.height
+        to target_line_h_px when user scale == 1), so "auto-fit" is just
+        "clear the user's manual scaling"."""
+        if self.editor_glyph is None:
             return
-        g_top = self.last_guide_bbox[1]
-        g_bot = self.last_guide_bbox[3]
-        target_h_px = max(1, g_bot - g_top)
-        # Display glyph height = editor_glyph.height * user_scale * editor_scale.
-        # Solve for user_scale that brings display height == target_h_px.
-        cur_display_h = self.editor_glyph.height * self.editor_scale
-        if cur_display_h <= 1e-6:
-            return
-        needed = target_h_px / cur_display_h
-        self._set_glyph_scale(needed, redraw=False)
-        # Center the glyph's bbox around the guide bbox (y).
-        # After setting user scale, the raster is centered on baseline_y.
-        # Additional fine alignment isn't as useful for SVG since the paths
-        # already live in tight bbox coordinates; leave offset at (0,0).
-        if redraw:
-            self.redraw_editor()
+        self.editor_offset_x = 0.0
+        self.editor_offset_y = 0.0
+        self._set_glyph_scale(1.0, redraw=redraw)
 
     # ── Save / relabel / delete ─────────────────────────────────────────
 
     def save_transform(self) -> None:
+        """Bake scale + horizontal offset into the SVG geometry; fold the
+        vertical offset into the baseline metadata (don't bake it into
+        geometry — apply_transform re-crops to content bbox, which would
+        silently cancel any pure translation)."""
         v = self.current_variant()
         if v is None or self.editor_glyph is None:
             return
 
-        applied_scale = float(self.glyph_user_scale)
-        transformed = self.editor_glyph.apply_transform(
-            tx=self.editor_offset_x,
-            ty=self.editor_offset_y,
-            sx=applied_scale,
-        )
-        try:
-            transformed.save(v.abs_path)
-        except Exception as ex:  # noqa: BLE001
-            messagebox.showerror("Save failed", str(ex))
-            return
+        # Pure metadata write — no geometry mutation, no state reset. The
+        # user's drag + slider values are persisted verbatim to index.json;
+        # reload reads them back. Guarantees:
+        #   • offset numbers stay at what the user set
+        #   • glyph doesn't shift visually
+        #   • successive saves are idempotent
+        # Compose / plotter export read v.user_scale and v.offset_x/y to
+        # produce final geometry, so the SVG on disk stays the normalized
+        # reference version.
+        offset_x_pt = float(self.editor_offset_x)
+        offset_y_pt = float(self.editor_offset_y)
+        user_scale = float(self.glyph_user_scale)
 
-        new_orig_h = round(transformed.height, 3)
-        new_orig_w = round(transformed.width, 3)
         try:
-            self._update_variant_metrics(v, new_orig_h, new_orig_w)
-            v.orig_h = new_orig_h
-            v.orig_w = new_orig_w
+            self._update_variant_metrics(
+                v,
+                new_orig_h=v.orig_h,
+                new_orig_w=v.orig_w,
+                offset_x=offset_x_pt,
+                offset_y=offset_y_pt,
+                user_scale=user_scale,
+            )
+            v.offset_x = offset_x_pt
+            v.offset_y = offset_y_pt
+            v.user_scale = user_scale
         except Exception as ex:  # noqa: BLE001
             messagebox.showwarning(
                 "Metadata update warning",
-                f"Saved SVG but could not update index.json:\n{ex}",
+                f"Could not update index.json:\n{ex}",
             )
 
-        # Reset in-memory transform state to the new baseline.
-        self.editor_glyph = transformed
+        # Keep the plotter sibling SVG in sync with any recent normalization.
+        # (Geometry didn't change on this save, but recomputing costs <20ms
+        # and guarantees the plotter file exists alongside the outline.)
         try:
-            self.editor_centerlines = compute_centerlines(self.editor_glyph)
+            if not self.editor_centerlines:
+                self.editor_centerlines = compute_centerlines(self.editor_glyph)
+            plotter_path = v.abs_path.with_suffix(".plotter.svg")
+            plotter_svg = centerlines_to_svg(
+                self.editor_centerlines,
+                width=self.editor_glyph.width,
+                height=self.editor_glyph.height,
+                stroke_px=max(0.05, self.editor_glyph.height * 0.02),
+            )
+            plotter_path.write_text(plotter_svg, encoding="utf-8")
         except Exception:
-            self.editor_centerlines = []
-        self.editor_offset_x = 0.0
-        self.editor_offset_y = 0.0
-        self._set_glyph_scale(1.0, redraw=False)
-        self.pending_auto_fit = bool(self.auto_fit_var.get())
-        self.sel_size_var.set(f"Size: {transformed.width:.2f} x {transformed.height:.2f} pt")
-        self.redraw_editor()
+            pass
+
         self.rebuild_grid()
 
+        self.editor_save_status.set(
+            f"Saved ✓  (scale {user_scale:.2f}×, offset {offset_x_pt:+.2f}, {offset_y_pt:+.2f} pt)"
+        )
+        self.root.after(2500, lambda: self.editor_save_status.set(""))
+
     def _update_variant_metrics(
-        self, v: GlyphVariant, new_orig_h: float, new_orig_w: float,
+        self,
+        v: GlyphVariant,
+        new_orig_h: float | None = None,
+        new_orig_w: float | None = None,
+        baseline: float | None = None,
+        offset_x: float | None = None,
+        offset_y: float | None = None,
+        user_scale: float | None = None,
     ) -> None:
         with open(v.idx_path, encoding="utf-8") as f:
             index = json.load(f)
@@ -777,8 +1761,18 @@ class SvgGlyphEditorApp:
         for e in entries:
             if isinstance(e, dict) and str(e.get("path", "")) == v.rel_path and not updated:
                 ne = dict(e)
-                ne["orig_h"] = float(new_orig_h)
-                ne["orig_w"] = float(new_orig_w)
+                if new_orig_h is not None:
+                    ne["orig_h"] = float(new_orig_h)
+                if new_orig_w is not None:
+                    ne["orig_w"] = float(new_orig_w)
+                if baseline is not None:
+                    ne["baseline"] = float(baseline)
+                if offset_x is not None:
+                    ne["offset_x"] = float(offset_x)
+                if offset_y is not None:
+                    ne["offset_y"] = float(offset_y)
+                if user_scale is not None:
+                    ne["user_scale"] = float(user_scale)
                 new_entries.append(ne)
                 updated = True
             else:
