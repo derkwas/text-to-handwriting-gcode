@@ -338,16 +338,7 @@ class SvgGlyphEditorApp:
         editor_group = ttk.LabelFrame(right, text="Editor (drag to move)")
         editor_group.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
-        # Pack bottom-up so the action buttons are ALWAYS visible: Tk packs
-        # widgets in declaration order and side=BOTTOM stacks from the
-        # bottom. The canvas goes LAST with expand=True so it fills only
-        # whatever vertical space is left — it can shrink but never push
-        # the buttons off-screen.
-        tip = ttk.Label(editor_group, text=(
-            "Tip: drag to move glyph. Arrow keys nudge; Shift+Arrow = 5×. "
-            "Dragging vertically adjusts the baseline. Scale resizes around centre."
-        ), wraplength=460)
-        tip.pack(side=tk.BOTTOM, anchor="w", padx=8, pady=(0, 8))
+
 
         buttons = ttk.Frame(editor_group)
         buttons.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
