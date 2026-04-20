@@ -417,11 +417,6 @@ class SvgGlyphEditorApp:
         self.root.bind("<Right>", _if_editor(lambda: self.nudge(0.2, 0)))
         self.root.bind("<Up>", _if_editor(lambda: self.nudge(0, -0.2)))
         self.root.bind("<Down>", _if_editor(lambda: self.nudge(0, 0.2)))
-        self.root.bind("<Shift-Left>", _if_editor(lambda: self.nudge(-1.0, 0)))
-        self.root.bind("<Shift-Right>", _if_editor(lambda: self.nudge(1.0, 0)))
-        self.root.bind("<Shift-Up>", _if_editor(lambda: self.nudge(0, -1.0)))
-        self.root.bind("<Shift-Down>", _if_editor(lambda: self.nudge(0, 1.0)))
-
         # F2 = coverage report. bind_all so it fires regardless of which
         # tab or widget has focus (including the compose Text box).
         self.root.bind_all("<F2>", self.on_show_coverage_report)
