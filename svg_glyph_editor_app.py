@@ -566,10 +566,21 @@ class SvgGlyphEditorApp:
                     ).grid(row=2, column=3, padx=(4, 0),
                            sticky="w", pady=(6, 0))
 
+        # Baseline offset (pt): shift every line up (-) or down (+)
+        # relative to the blue rules. Useful when a handwriting library
+        # tends to sit too low / high on the rule by default.
+        ttk.Label(ctrl, text="Baseline Δ (pt):").grid(
+            row=3, column=0, sticky="w", pady=(6, 0))
+        self.compose_baseline_offset_var = tk.DoubleVar(value=0.0)
+        ttk.Spinbox(ctrl, from_=-15.0, to=15.0, increment=0.5,
+                    textvariable=self.compose_baseline_offset_var, width=6,
+                    ).grid(row=3, column=1, padx=(4, 12),
+                           sticky="w", pady=(6, 0))
+
         self.compose_random_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(ctrl, text="Randomize variants",
                         variable=self.compose_random_var
-                        ).grid(row=3, column=0, columnspan=4,
+                        ).grid(row=4, column=0, columnspan=4,
                                sticky="w", pady=(6, 0))
 
         # Overlay the raw centerline polylines on top of the stroked output
@@ -577,13 +588,13 @@ class SvgGlyphEditorApp:
         self.compose_vectors_show_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(ctrl, text="Overlay vector centerlines (red)",
                         variable=self.compose_vectors_show_var
-                        ).grid(row=4, column=0, columnspan=4,
+                        ).grid(row=5, column=0, columnspan=4,
                                sticky="w", pady=(2, 0))
 
         self.compose_ruled_paper_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(ctrl, text="Ruled paper background",
                         variable=self.compose_ruled_paper_var
-                        ).grid(row=5, column=0, columnspan=4,
+                        ).grid(row=6, column=0, columnspan=4,
                                sticky="w", pady=(2, 0))
 
         # Naturalness panel (collapsible — click the header to
@@ -624,82 +635,106 @@ class SvgGlyphEditorApp:
         self.nat_letterspacing_var = tk.BooleanVar(value=True)
         self.nat_letterspacing_strength_var = tk.DoubleVar(value=1.0)
         self.nat_anticlump_var = tk.BooleanVar(value=True)
+        # Random early line-break: occasionally wrap to the next line
+        # before reaching the right margin, matching real handwriting
+        # where the eye says "this word will fit but I'm close enough".
+        self.nat_earlybreak_var = tk.BooleanVar(value=True)
+        self.nat_earlybreak_strength_var = tk.DoubleVar(value=1.0)
         # Minimum absolute distances, in PDF points. Floors applied
         # after spacing jitter so letters/words never get tighter than
         # these regardless of strength settings.
         self.nat_word_buffer_var = tk.DoubleVar(value=3.0)
         self.nat_letter_buffer_var = tk.DoubleVar(value=0.15)
 
-        row = 0
+        # Two-column body: glyph-transform knobs on the left, spacing /
+        # layout knobs on the right. Each sub-frame runs its own grid
+        # so slider+readout widths don't interact across the divider.
+        nat_left = ttk.Frame(nat)
+        nat_left.grid(row=0, column=0, sticky="nsew", padx=(2, 4))
+        nat_right = ttk.Frame(nat)
+        nat_right.grid(row=0, column=1, sticky="nsew", padx=(4, 2))
+        nat.columnconfigure(0, weight=1)
+        nat.columnconfigure(1, weight=1)
 
-        def _slider_row(cb_var: tk.BooleanVar,
+        # Row counters per column.
+        rows = {"L": 0, "R": 0}
+
+        def _slider_row(parent: ttk.Frame, side: str,
+                         cb_var: tk.BooleanVar,
                          strength_var: tk.DoubleVar,
                          label: str) -> None:
-            nonlocal row
+            r = rows[side]
             disp_var = tk.StringVar(value=f"{strength_var.get():.2f}")
             strength_var.trace_add(
                 "write",
                 lambda *_, s=strength_var, d=disp_var:
                     d.set(f"{s.get():.2f}"),
             )
-            ttk.Checkbutton(nat, text=label, variable=cb_var
-                             ).grid(row=row, column=0, sticky="w",
-                                    padx=(4, 0), pady=1)
-            ttk.Scale(nat, from_=0.0, to=2.0,
+            ttk.Checkbutton(parent, text=label, variable=cb_var
+                             ).grid(row=r, column=0, sticky="w",
+                                    padx=(2, 0), pady=1)
+            ttk.Scale(parent, from_=0.0, to=2.0,
                        variable=strength_var,
-                       orient="horizontal", length=110
-                       ).grid(row=row, column=1, sticky="ew",
-                              padx=(4, 4), pady=1)
-            ttk.Label(nat, textvariable=disp_var, width=5
-                       ).grid(row=row, column=2, sticky="w",
-                              padx=(0, 4), pady=1)
-            row += 1
+                       orient="horizontal", length=90
+                       ).grid(row=r, column=1, sticky="ew",
+                              padx=(3, 3), pady=1)
+            ttk.Label(parent, textvariable=disp_var, width=4
+                       ).grid(row=r, column=2, sticky="w",
+                              padx=(0, 2), pady=1)
+            rows[side] = r + 1
 
-        def _spinbox_row(cb_var: tk.BooleanVar | None,
+        def _spinbox_row(parent: ttk.Frame, side: str,
+                          cb_var: tk.BooleanVar | None,
                           value_var: tk.DoubleVar,
                           label: str,
-                          from_: float, to: float, increment: float) -> None:
-            nonlocal row
+                          from_: float, to: float,
+                          increment: float) -> None:
+            r = rows[side]
             if cb_var is not None:
-                ttk.Checkbutton(nat, text=label, variable=cb_var
-                                 ).grid(row=row, column=0, sticky="w",
-                                        padx=(4, 0), pady=1)
+                ttk.Checkbutton(parent, text=label, variable=cb_var
+                                 ).grid(row=r, column=0, sticky="w",
+                                        padx=(2, 0), pady=1)
             else:
-                ttk.Label(nat, text=label
-                            ).grid(row=row, column=0, sticky="w",
-                                   padx=(4, 0), pady=1)
-            ttk.Spinbox(nat, from_=from_, to=to, increment=increment,
-                         textvariable=value_var, width=6
-                         ).grid(row=row, column=1, columnspan=2,
-                                sticky="w", padx=(4, 4), pady=1)
-            row += 1
+                ttk.Label(parent, text=label
+                            ).grid(row=r, column=0, sticky="w",
+                                   padx=(2, 0), pady=1)
+            ttk.Spinbox(parent, from_=from_, to=to, increment=increment,
+                         textvariable=value_var, width=5
+                         ).grid(row=r, column=1, columnspan=2,
+                                sticky="w", padx=(3, 3), pady=1)
+            rows[side] = r + 1
 
-        # Sliders — continuous feel.
-        _slider_row(self.nat_pos_var,   self.nat_pos_strength_var,   "Position jitter")
-        _slider_row(self.nat_rot_var,   self.nat_rot_strength_var,   "Rotation jitter")
-        _slider_row(self.nat_drift_var, self.nat_drift_strength_var, "Baseline drift")
+        # ── Left: glyph-transform jitters ───────────────────────────────
+        _slider_row(nat_left, "L", self.nat_pos_var,
+                     self.nat_pos_strength_var,   "Position")
+        _slider_row(nat_left, "L", self.nat_rot_var,
+                     self.nat_rot_strength_var,   "Rotation")
+        _slider_row(nat_left, "L", self.nat_drift_var,
+                     self.nat_drift_strength_var, "Baseline drift")
+        _spinbox_row(nat_left, "L", self.nat_size_var,
+                      self.nat_size_strength_var,
+                      "Size jitter", 0.0, 2.0, 0.1)
 
-        # Spinboxes — dimensional strengths.
-        _spinbox_row(self.nat_size_var,          self.nat_size_strength_var,
-                      "Size jitter",    0.0, 2.0, 0.1)
-        _spinbox_row(self.nat_spacing_var,       self.nat_spacing_strength_var,
-                      "Word spacing",   0.0, 2.0, 0.1)
-        _spinbox_row(self.nat_letterspacing_var, self.nat_letterspacing_strength_var,
-                      "Letter spacing", 0.0, 2.0, 0.1)
+        # ── Right: spacing / layout ─────────────────────────────────────
+        _spinbox_row(nat_right, "R", self.nat_spacing_var,
+                      self.nat_spacing_strength_var,
+                      "Word spacing",    0.0, 2.0, 0.1)
+        _spinbox_row(nat_right, "R", self.nat_letterspacing_var,
+                      self.nat_letterspacing_strength_var,
+                      "Letter spacing",  0.0, 2.0, 0.1)
+        _spinbox_row(nat_right, "R", self.nat_earlybreak_var,
+                      self.nat_earlybreak_strength_var,
+                      "Early break",     0.0, 2.0, 0.1)
+        _spinbox_row(nat_right, "R", None, self.nat_word_buffer_var,
+                      "Word buffer pt",   0.0, 20.0, 0.25)
+        _spinbox_row(nat_right, "R", None, self.nat_letter_buffer_var,
+                      "Letter buffer pt", 0.0, 5.0, 0.05)
 
-        # Absolute minimum distances. No checkbox — these are always
-        # applied; set to 0 to effectively disable.
-        _spinbox_row(None, self.nat_word_buffer_var,
-                      "Word buffer (pt)",   0.0, 20.0, 0.25)
-        _spinbox_row(None, self.nat_letter_buffer_var,
-                      "Letter buffer (pt)", 0.0, 5.0, 0.05)
-
-        # Anti-clump is boolean-only (no amplitude makes sense for
-        # "avoid repeating the same variant"), so it spans all columns
-        # as a plain checkbutton.
+        # Anti-clump sits below the two columns as a full-width
+        # checkbutton since it's boolean and fits naturally at the end.
         ttk.Checkbutton(nat, text="Anti-clump variant picking",
                          variable=self.nat_anticlump_var
-                         ).grid(row=row, column=0, columnspan=3,
+                         ).grid(row=1, column=0, columnspan=2,
                                 sticky="w", padx=(4, 0), pady=(2, 2))
 
         btn_row = ttk.Frame(left)
@@ -879,6 +914,8 @@ class SvgGlyphEditorApp:
         )
         word_buffer_pt = float(nat.get("word_buffer", 0.0))
         letter_buffer_pt = float(nat.get("letter_buffer", 0.0))
+        earlybreak_on = bool(nat.get("earlybreak"))
+        earlybreak_strength = float(nat.get("earlybreak_strength", 1.0))
 
         def _space_adv() -> float:
             """Width of ONE inter-word space. Jittered per occurrence
@@ -894,15 +931,108 @@ class SvgGlyphEditorApp:
             candidate = space_advance * (1.0 + var)
             return max(space_advance * 0.6, word_buffer_pt, candidate)
 
+        # Word-level wrapping: we buffer a whole word's glyphs in
+        # `word_buf`, and only commit them to `positions` when we hit
+        # a word boundary (space, newline, end of input, missing char).
+        # At that point we can check if the full word fits on the
+        # current line — if not, we wrap ALL of the word's letters
+        # together instead of breaking mid-word, which is what a human
+        # actually does.
+        word_buf: list[dict] = []
+
+        def _commit_letter_to_positions(item: dict, x_pt: float,
+                                          y_baseline: float) -> None:
+            positions.append({
+                "x_pt": x_pt + item["off_x"],
+                "y_baseline_pt": y_baseline,
+                "glyph": item["g"],
+                "label": item["ch"],
+                "baseline_local": item["baseline_local_scaled"] - item["off_y"],
+                "scale": item["scale"],
+                "width": item["g_w"],
+                "height": item["g_h"],
+                "abs_path": item["abs_path"],
+                "x_jitter_pt": item["x_jitter"],
+                "y_jitter_pt": item["y_jitter"],
+                "rot_deg": item["rot_deg"],
+                "size_mul": item["size_mul"],
+            })
+
+        def _flush_word() -> None:
+            """Place everything in word_buf on the current line (wrapping
+            to a new line first if the word doesn't fit)."""
+            nonlocal cur_x, cur_baseline, max_x, word_buf
+            if not word_buf:
+                return
+            # Total word advance = first letter + sum of (kerning + adv) for the rest.
+            total = word_buf[0]["adv_w"]
+            for it in word_buf[1:]:
+                total += it["kerning_before"] + it["adv_w"]
+
+            overflow_current = cur_x + total > line_width_pt and cur_x > 0
+
+            # Occasional "I'd rather start the next line" break — fires
+            # only near the right margin and only when the word would
+            # still fit. Real handwriting does this when the eye senses
+            # the line is basically done.
+            do_early = False
+            if (not overflow_current
+                    and earlybreak_on and cur_x > 0
+                    and earlybreak_strength > 0):
+                ratio = cur_x / max(1.0, line_width_pt)
+                if ratio > 0.7:
+                    prob = min(
+                        0.75,
+                        ((ratio - 0.7) / 0.3) * 0.5 * earlybreak_strength,
+                    )
+                    if rng.random() < prob:
+                        do_early = True
+
+            if overflow_current or do_early:
+                cur_x = 0.0
+                cur_baseline += line_height_pt
+                # If even a fresh line can't hold this word, fall back
+                # to letter-wise wrapping for this single word so it
+                # doesn't run off the page. This is the one case where
+                # a word MAY get split — unavoidable if it's too long.
+                if total > line_width_pt:
+                    x_cursor = 0.0
+                    for idx, it in enumerate(word_buf):
+                        gap = it["kerning_before"] if idx > 0 else 0.0
+                        if x_cursor + gap + it["adv_w"] > line_width_pt \
+                                and x_cursor > 0:
+                            cur_baseline += line_height_pt
+                            x_cursor = 0.0
+                            gap = 0.0
+                        x_cursor += gap
+                        _commit_letter_to_positions(it, x_cursor, cur_baseline)
+                        x_cursor += it["adv_w"]
+                    cur_x = x_cursor
+                    max_x = max(max_x, cur_x)
+                    word_buf = []
+                    return
+
+            x_cursor = cur_x
+            for idx, it in enumerate(word_buf):
+                if idx > 0:
+                    x_cursor += it["kerning_before"]
+                _commit_letter_to_positions(it, x_cursor, cur_baseline)
+                x_cursor += it["adv_w"]
+            cur_x = x_cursor
+            max_x = max(max_x, cur_x)
+            word_buf = []
+
         i = 0
         while i < len(text):
             ch = text[i]
             if ch == "\n":
+                _flush_word()
                 cur_x = 0.0
                 cur_baseline += line_height_pt
                 i += 1
                 continue
             if ch == "\t":
+                _flush_word()
                 # Tabs jitter too — treated as four spaces, each with
                 # its own variation.
                 cur_x += sum(_space_adv() for _ in range(4))
@@ -912,6 +1042,7 @@ class SvgGlyphEditorApp:
                 i += 1
                 continue
             if ch.isspace():
+                _flush_word()
                 adv = _space_adv()
                 if cur_x + adv > line_width_pt and cur_x > 0:
                     cur_x = 0.0
@@ -924,6 +1055,11 @@ class SvgGlyphEditorApp:
 
             v = _pick_variant(ch)
             if v is None:
+                # Missing char: commit the pending word, then treat
+                # this as a space-width gap. Breaks the surrounding
+                # word in half — unavoidable since we have no glyph to
+                # place.
+                _flush_word()
                 missing.add(ch)
                 if cur_x + space_advance > line_width_pt and cur_x > 0:
                     cur_x = 0.0
@@ -935,6 +1071,7 @@ class SvgGlyphEditorApp:
 
             g = _load(v)
             if g is None:
+                _flush_word()
                 missing.add(ch)
                 cur_x += space_advance
                 i += 1
@@ -947,7 +1084,9 @@ class SvgGlyphEditorApp:
             scale = float(v.user_scale or 1.0) * font_size
             g_w = g.width * scale
             g_h = g.height * scale
-            baseline_local_scaled = float(v.baseline if v.baseline is not None else g.height) * scale
+            baseline_local_scaled = float(
+                v.baseline if v.baseline is not None else g.height
+            ) * scale
             off_x = float(v.offset_x or 0.0) * scale
             off_y = float(v.offset_y or 0.0) * scale
 
@@ -965,13 +1104,6 @@ class SvgGlyphEditorApp:
             base_adv = float(v.advance_x)
             adv_w = base_adv * float(v.advance_mul or 1.0) * scale
 
-            # Word-wrap: break line when the glyph would overflow. Using
-            # adv_w (not g_w) means tails can harmlessly hang past the
-            # right margin, same as any proper typography engine.
-            if cur_x + adv_w > line_width_pt and cur_x > 0:
-                cur_x = 0.0
-                cur_baseline += line_height_pt
-
             # Per-glyph naturalness draws. Each amplitude has its own
             # strength knob — flipping a checkbox off cleanly zeros
             # that feature regardless of the others.
@@ -984,49 +1116,45 @@ class SvgGlyphEditorApp:
             size_mul = (1.0 + rng.uniform(-0.04, 0.04) * size_strength
                         if size_on else 1.0)
 
-            positions.append({
-                "x_pt": cur_x + off_x,
-                "y_baseline_pt": cur_baseline,
-                "glyph": g,
-                "label": ch,
-                "baseline_local": baseline_local_scaled - off_y,
+            # Kerning applies BETWEEN letters within a word, so the
+            # first letter of a word uses 0 here.
+            if len(word_buf) == 0:
+                eff_kerning = 0.0
+            else:
+                eff_kerning = kerning
+                if letterspacing_on:
+                    prop = max(-kerning * 0.6, min(
+                        kerning * 0.6,
+                        rng.uniform(-kerning * 0.6, kerning * 0.6)
+                        * letterspacing_strength,
+                    ))
+                    abs_jit = max(-0.35, min(0.35,
+                        rng.uniform(-0.25, 0.25) * letterspacing_strength,
+                    ))
+                    eff_kerning += prop + abs_jit
+                eff_kerning = max(letter_buffer_pt, eff_kerning)
+
+            word_buf.append({
+                "ch": ch,
+                "g": g,
                 "scale": scale,
-                "width": g_w,
-                "height": g_h,
+                "g_w": g_w,
+                "g_h": g_h,
+                "baseline_local_scaled": baseline_local_scaled,
+                "off_x": off_x,
+                "off_y": off_y,
                 "abs_path": v.abs_path,
-                "x_jitter_pt": x_jitter,
-                "y_jitter_pt": y_jitter,
+                "adv_w": adv_w,
+                "kerning_before": eff_kerning,
+                "x_jitter": x_jitter,
+                "y_jitter": y_jitter,
                 "rot_deg": rot_deg,
                 "size_mul": size_mul,
             })
-            # Letter spacing jitter. Adds a small ±offset to the base
-            # kerning so some letter pairs crowd a bit, others breathe
-            # — the rhythm real handwriting has instead of metronomic
-            # spacing.
-            eff_kerning = kerning
-            if letterspacing_on:
-                # Cap each random component so very high strengths can't
-                # pull kerning to wild extremes. Proportional piece
-                # respects font size; absolute piece is fixed pt.
-                prop = max(-kerning * 0.6, min(
-                    kerning * 0.6,
-                    rng.uniform(-kerning * 0.6, kerning * 0.6)
-                    * letterspacing_strength,
-                ))
-                abs_jit = max(-0.35, min(0.35,
-                    rng.uniform(-0.25, 0.25) * letterspacing_strength,
-                ))
-                eff_kerning += prop + abs_jit
-            # Hard minimum: letters always have a positive gap between
-            # their bounding boxes. User-configurable via the
-            # "Letter buffer (pt)" field — 0.15 pt by default, enough
-            # to prevent narrow glyphs (i, l, 1) from visually landing
-            # inside their neighbours. Applied whether letter-spacing
-            # jitter is on or off.
-            eff_kerning = max(letter_buffer_pt, eff_kerning)
-            cur_x += adv_w + eff_kerning
-            max_x = max(max_x, cur_x)
             i += 1
+
+        # End of input — don't forget the last word.
+        _flush_word()
 
         total_w = max(max_x, 1.0)
         total_h = cur_baseline + descender_reserve
@@ -1116,6 +1244,17 @@ class SvgGlyphEditorApp:
         RULE_LINE_SPACING_PT = 9.0 / 32.0 * 72.0
         RULE_FIRST_LINE_PT = 72.0
 
+        # User-configurable vertical offset applied to every baseline
+        # so text can sit higher (−) or lower (+) relative to the blue
+        # rules. Kept out of the None-branch for unruled paper because
+        # there are no rules to offset from.
+        try:
+            baseline_offset_pt = float(
+                self.compose_baseline_offset_var.get()
+            )
+        except (ValueError, tk.TclError):
+            baseline_offset_pt = 0.0
+
         if self.compose_ruled_paper_var.get():
             RULE_LEFT_GAP_PT = 4.0
             eff_margin_x_pt = RULE_LEFT_MARGIN_PT + RULE_LEFT_GAP_PT
@@ -1123,8 +1262,11 @@ class SvgGlyphEditorApp:
             line_height_override: float | None = RULE_LINE_SPACING_PT
             # First baseline sits on the TOP blue rule — the "title"
             # line. Ascenders lean into the 1" top margin above, which
-            # matches how people write on notebook paper.
-            first_baseline_override: float | None = RULE_FIRST_LINE_PT
+            # matches how people write on notebook paper. The offset
+            # shifts every baseline uniformly; rules stay put.
+            first_baseline_override: float | None = (
+                RULE_FIRST_LINE_PT + baseline_offset_pt
+            )
             line_width_pt = max(10.0, page_w_pt - eff_margin_x_pt - margin_pt)
         else:
             eff_margin_x_pt = margin_pt
@@ -1390,6 +1532,10 @@ class SvgGlyphEditorApp:
                 self.nat_letterspacing_strength_var
             ),
             "anti_clump":           bool(self.nat_anticlump_var.get()),
+            "earlybreak":           bool(self.nat_earlybreak_var.get()),
+            "earlybreak_strength":  _nat_strength(
+                self.nat_earlybreak_strength_var
+            ),
             "word_buffer":          max(0.0, _nat_strength(
                 self.nat_word_buffer_var
             )),

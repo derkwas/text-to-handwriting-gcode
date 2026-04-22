@@ -42,7 +42,7 @@ python svg_glyph_editor_app.py
 | Ctrl + R | Render the compose page |
 | F2 | Open library coverage report |
 
-## ⚠️ Ethical Use Disclaimer ⚠️
+## ⚠️ Ethical Use Disclaimer
 
 This project is intended for **creative, educational, and research purposes**.
 
