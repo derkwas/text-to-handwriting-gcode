@@ -65,6 +65,16 @@ class GlyphVariant:
     offset_x: float = 0.0
     offset_y: float = 0.0
     user_scale: float = 1.0
+    # Advance width (in glyph-local pt) at which the cursor should move
+    # to position the NEXT glyph, distinct from the ink bounding box.
+    # For characters with trailing tails (q, j, f...) this is smaller
+    # than orig_w so the next letter sits against the body, not past
+    # the tail. Auto-computed by normalize_library; None for old
+    # libraries (layout falls back to orig_w in that case).
+    advance_x: float | None = None
+    # User override multiplier applied on top of advance_x — tighten or
+    # loosen any individual variant that the heuristic got wrong.
+    advance_mul: float = 1.0
 
 
 def safe_label_dir(label: str) -> str:
@@ -122,6 +132,7 @@ def parse_library_paths(raw_values: list[str]) -> list[Path]:
 
 
 def load_variants(library_paths: list[Path]) -> list[GlyphVariant]:
+    from svg_glyph import ADVANCE_ALGO_VERSION as _CUR_ADVANCE_ALGO
     variants: list[GlyphVariant] = []
     for lib in library_paths:
         idx_path = lib / "index.json"
@@ -132,6 +143,12 @@ def load_variants(library_paths: list[Path]) -> list[GlyphVariant]:
         if index.get("format") and index.get("format") != "svg":
             # Skip legacy raster indexes. User should use glyph_editor_app.py.
             continue
+        # Stored advance_x values are only trustworthy if they came from
+        # the current algorithm version. Older or missing version
+        # markers mean the numbers might predate a heuristic fix, so
+        # we ignore them and let layout lazy-recompute.
+        stored_algo = int(index.get("advance_algo_version") or 0)
+        advances_fresh = stored_algo >= _CUR_ADVANCE_ALGO
         glyphs = index.get("glyphs", {})
         for label, entries in glyphs.items():
             for entry in entries:
@@ -140,6 +157,7 @@ def load_variants(library_paths: list[Path]) -> list[GlyphVariant]:
                 rel = str(entry.get("path", ""))
                 if not rel:
                     continue
+                adv = entry.get("advance_x") if advances_fresh else None
                 variants.append(GlyphVariant(
                     label=label,
                     lib_path=lib,
@@ -152,6 +170,8 @@ def load_variants(library_paths: list[Path]) -> list[GlyphVariant]:
                     offset_x=float(entry.get("offset_x", 0.0)),
                     offset_y=float(entry.get("offset_y", 0.0)),
                     user_scale=float(entry.get("user_scale", 1.0)),
+                    advance_x=float(adv) if adv is not None else None,
+                    advance_mul=float(entry.get("advance_mul", 1.0)),
                 ))
     variants.sort(key=lambda v: (v.label, str(v.lib_path), v.rel_path))
     return variants
@@ -193,6 +213,18 @@ class SvgGlyphEditorApp:
         self.grid_cols = 8
 
         self.selected_global_idx: int | None = None
+
+        # Thumbnail cache: keyed by (abs_path, mtime_ns) so edits auto-
+        # invalidate. Without this the grid re-rasterizes every SVG on
+        # every click/reload/filter — fine for a few glyphs, brutal for
+        # hundreds.
+        self._thumb_cache: dict[tuple[str, int], ImageTk.PhotoImage] = {}
+        self._thumb_checker_bg: "Image.Image | None" = None
+        # Canvas id of the currently-drawn selection highlight rectangle,
+        # so selection changes can move/delete it without re-rasterizing
+        # the whole grid.
+        self._selection_canvas_id: int | None = None
+
         self.editor_glyph: Glyph | None = None
         self.editor_centerlines: list[dict] = []  # base-glyph coord space
         # Typographic baseline y inside the glyph's local frame. Read-only
@@ -212,6 +244,7 @@ class SvgGlyphEditorApp:
         self.drag_last_x = 0
         self.drag_last_y = 0
         self._suppress_scale_callback = False
+        self._suppress_advance_callback = False
         self.last_guide_bbox: tuple[int, int, int, int] | None = None
         self.last_baseline_y = 0
 
@@ -240,6 +273,12 @@ class SvgGlyphEditorApp:
         self._pil_font_cache: dict[tuple[str, int], "ImageFont.FreeTypeFont"] = {}
         self.glyph_scale_var = tk.DoubleVar(value=1.0)
         self.glyph_scale_display_var = tk.StringVar(value="1.00x")
+        # Advance multiplier applied on top of the auto-detected
+        # advance_x at compose time. 1.0 = use the detected value.
+        # <1 tightens (next letter sits closer), >1 loosens.
+        self.glyph_advance_mul = 1.0
+        self.glyph_advance_mul_var = tk.DoubleVar(value=1.0)
+        self.glyph_advance_mul_display_var = tk.StringVar(value="1.00x")
 
         self._build_ui()
         self.reload_variants()
@@ -371,6 +410,27 @@ class SvgGlyphEditorApp:
                    command=self.auto_fit_current_glyph
                    ).pack(side=tk.LEFT)
 
+        # Advance (×) — how tightly the NEXT letter sits to this one.
+        # Independent of size; only affects compose layout, not what
+        # you see in the editor canvas.
+        adv_controls = ttk.Frame(editor_group)
+        adv_controls.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Label(adv_controls, text="Advance (×):").pack(side=tk.LEFT)
+        ttk.Scale(adv_controls, from_=0.3, to=1.5,
+                   variable=self.glyph_advance_mul_var,
+                   orient=tk.HORIZONTAL, length=220,
+                   command=self.on_advance_mul_changed
+                   ).pack(side=tk.LEFT, padx=(8, 8))
+        ttk.Label(adv_controls,
+                   textvariable=self.glyph_advance_mul_display_var,
+                   width=6).pack(side=tk.LEFT)
+        self.glyph_advance_mul_var.trace_add(
+            "write", lambda *_: self.on_advance_mul_changed()
+        )
+        ttk.Button(adv_controls, text="Reset",
+                    command=lambda: self._set_advance_mul(1.0)
+                    ).pack(side=tk.LEFT)
+
         guide_controls = ttk.Frame(editor_group)
         guide_controls.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=(0, 6))
         ttk.Checkbutton(guide_controls, text="Show font guide",
@@ -431,7 +491,15 @@ class SvgGlyphEditorApp:
         self.compose_text = tk.Text(left, height=10, wrap="word",
                                     font=("Consolas", 11))
         self.compose_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-        self.compose_text.insert("1.0", "The quick brown fox\njumps over the lazy dog")
+        # Default sample text lives in sample_text.txt next to the app
+        # so it's easy to swap out without touching code. Falls back to
+        # a short sentence if the file is missing or unreadable.
+        sample_path = Path(__file__).resolve().parent / "sample_text.txt"
+        try:
+            sample_text = sample_path.read_text(encoding="utf-8")
+        except Exception:
+            sample_text = "The quick brown fox\njumps over the lazy dog"
+        self.compose_text.insert("1.0", sample_text)
         ttk.Label(
             left,
             text="Tip: put '---PAGE---' on its own line to start a new page.",
@@ -453,12 +521,12 @@ class SvgGlyphEditorApp:
                            pady=(6, 0))
         ttk.Label(ctrl, text="Zoom:").grid(row=1, column=2, sticky="w",
                                             pady=(6, 0))
-        # Zoom 1.0 = whole page fits the preview canvas. Above 1 scales up
-        # (scrolls), below 1 shrinks. Internal rendering happens at a
-        # fixed high DPI (see RENDER_PX_PER_PT) then resized for display,
-        # so strokes stay crisp at any zoom.
+        # Zoom 1.0 = whole page fits the preview canvas. Above 1 scales
+        # up (scrolls), below 1 shrinks. Changing zoom re-displays the
+        # already-rendered pages — no re-render. Ctrl+scroll over the
+        # preview also works.
         self.compose_scale_var = tk.DoubleVar(value=1.0)
-        ttk.Spinbox(ctrl, from_=0.25, to=5.0, increment=0.1,
+        ttk.Spinbox(ctrl, from_=1.0, to=5.0, increment=0.1,
                     textvariable=self.compose_scale_var, width=6
                     ).grid(row=1, column=3, padx=(4, 0), sticky="w",
                            pady=(6, 0))
@@ -507,52 +575,106 @@ class SvgGlyphEditorApp:
                         ).grid(row=5, column=0, columnspan=4,
                                sticky="w", pady=(2, 0))
 
-        # Naturalness panel. Each toggle is on by default; flip them off
-        # individually to isolate which effects you like. All amplitudes
-        # scale with the global strength multiplier. Reseed gives a new
-        # random draw for all jitters without changing text/settings.
+        # Naturalness panel.
+        #   • Geometric "feel" effects (position / rotation / drift)
+        #     are sliders — you drag, you see.
+        #   • Dimensional effects (size, word / letter spacing) and
+        #     absolute minimum-gap buffers are spinboxes — you want
+        #     to type a specific number.
         nat = ttk.LabelFrame(left, text="Naturalness")
         nat.pack(fill=tk.X, padx=8, pady=(4, 6))
-        self.nat_strength_var = tk.DoubleVar(value=1.0)
+        nat.columnconfigure(1, weight=1)
+
         self.nat_pos_var = tk.BooleanVar(value=True)
+        self.nat_pos_strength_var = tk.DoubleVar(value=1.0)
         self.nat_rot_var = tk.BooleanVar(value=True)
+        self.nat_rot_strength_var = tk.DoubleVar(value=1.0)
         self.nat_size_var = tk.BooleanVar(value=True)
+        self.nat_size_strength_var = tk.DoubleVar(value=1.0)
         self.nat_drift_var = tk.BooleanVar(value=True)
+        self.nat_drift_strength_var = tk.DoubleVar(value=1.0)
+        self.nat_spacing_var = tk.BooleanVar(value=True)
+        self.nat_spacing_strength_var = tk.DoubleVar(value=1.0)
+        self.nat_letterspacing_var = tk.BooleanVar(value=True)
+        self.nat_letterspacing_strength_var = tk.DoubleVar(value=1.0)
         self.nat_anticlump_var = tk.BooleanVar(value=True)
+        # Minimum absolute distances, in PDF points. Floors applied
+        # after spacing jitter so letters/words never get tighter than
+        # these regardless of strength settings.
+        self.nat_word_buffer_var = tk.DoubleVar(value=3.0)
+        self.nat_letter_buffer_var = tk.DoubleVar(value=0.15)
 
-        # Strength slider + live numeric readout. The readout StringVar
-        # is driven by a trace on the DoubleVar so it tracks in real
-        # time as the slider moves.
-        ttk.Label(nat, text="Strength:").grid(row=0, column=0, sticky="w",
-                                                padx=(4, 0), pady=(2, 0))
-        ttk.Scale(nat, from_=0.0, to=2.0,
-                  variable=self.nat_strength_var,
-                  orient="horizontal", length=140
-                  ).grid(row=0, column=1, sticky="ew", padx=(4, 4),
-                         pady=(2, 0))
-        self._nat_strength_disp = tk.StringVar(
-            value=f"{self.nat_strength_var.get():.2f}"
-        )
-        self.nat_strength_var.trace_add(
-            "write",
-            lambda *_: self._nat_strength_disp.set(
-                f"{self.nat_strength_var.get():.2f}"
-            ),
-        )
-        ttk.Label(nat, textvariable=self._nat_strength_disp, width=5
-                  ).grid(row=0, column=2, sticky="w", padx=(0, 4),
-                         pady=(2, 0))
+        row = 0
 
-        for i, (var, label) in enumerate([
-            (self.nat_pos_var,       "Position jitter"),
-            (self.nat_rot_var,       "Rotation jitter"),
-            (self.nat_size_var,      "Size jitter"),
-            (self.nat_drift_var,     "Baseline drift (per line)"),
-            (self.nat_anticlump_var, "Anti-clump variant picking"),
-        ], start=1):
-            ttk.Checkbutton(nat, text=label, variable=var
-                            ).grid(row=i, column=0, columnspan=3,
-                                   sticky="w", padx=(4, 0))
+        def _slider_row(cb_var: tk.BooleanVar,
+                         strength_var: tk.DoubleVar,
+                         label: str) -> None:
+            nonlocal row
+            disp_var = tk.StringVar(value=f"{strength_var.get():.2f}")
+            strength_var.trace_add(
+                "write",
+                lambda *_, s=strength_var, d=disp_var:
+                    d.set(f"{s.get():.2f}"),
+            )
+            ttk.Checkbutton(nat, text=label, variable=cb_var
+                             ).grid(row=row, column=0, sticky="w",
+                                    padx=(4, 0), pady=1)
+            ttk.Scale(nat, from_=0.0, to=2.0,
+                       variable=strength_var,
+                       orient="horizontal", length=110
+                       ).grid(row=row, column=1, sticky="ew",
+                              padx=(4, 4), pady=1)
+            ttk.Label(nat, textvariable=disp_var, width=5
+                       ).grid(row=row, column=2, sticky="w",
+                              padx=(0, 4), pady=1)
+            row += 1
+
+        def _spinbox_row(cb_var: tk.BooleanVar | None,
+                          value_var: tk.DoubleVar,
+                          label: str,
+                          from_: float, to: float, increment: float) -> None:
+            nonlocal row
+            if cb_var is not None:
+                ttk.Checkbutton(nat, text=label, variable=cb_var
+                                 ).grid(row=row, column=0, sticky="w",
+                                        padx=(4, 0), pady=1)
+            else:
+                ttk.Label(nat, text=label
+                            ).grid(row=row, column=0, sticky="w",
+                                   padx=(4, 0), pady=1)
+            ttk.Spinbox(nat, from_=from_, to=to, increment=increment,
+                         textvariable=value_var, width=6
+                         ).grid(row=row, column=1, columnspan=2,
+                                sticky="w", padx=(4, 4), pady=1)
+            row += 1
+
+        # Sliders — continuous feel.
+        _slider_row(self.nat_pos_var,   self.nat_pos_strength_var,   "Position jitter")
+        _slider_row(self.nat_rot_var,   self.nat_rot_strength_var,   "Rotation jitter")
+        _slider_row(self.nat_drift_var, self.nat_drift_strength_var, "Baseline drift")
+
+        # Spinboxes — dimensional strengths.
+        _spinbox_row(self.nat_size_var,          self.nat_size_strength_var,
+                      "Size jitter",    0.0, 2.0, 0.1)
+        _spinbox_row(self.nat_spacing_var,       self.nat_spacing_strength_var,
+                      "Word spacing",   0.0, 2.0, 0.1)
+        _spinbox_row(self.nat_letterspacing_var, self.nat_letterspacing_strength_var,
+                      "Letter spacing", 0.0, 2.0, 0.1)
+
+        # Absolute minimum distances. No checkbox — these are always
+        # applied; set to 0 to effectively disable.
+        _spinbox_row(None, self.nat_word_buffer_var,
+                      "Word buffer (pt)",   0.0, 20.0, 0.25)
+        _spinbox_row(None, self.nat_letter_buffer_var,
+                      "Letter buffer (pt)", 0.0, 5.0, 0.05)
+
+        # Anti-clump is boolean-only (no amplitude makes sense for
+        # "avoid repeating the same variant"), so it spans all columns
+        # as a plain checkbutton.
+        ttk.Checkbutton(nat, text="Anti-clump variant picking",
+                         variable=self.nat_anticlump_var
+                         ).grid(row=row, column=0, columnspan=3,
+                                sticky="w", padx=(4, 0), pady=(2, 2))
 
         btn_row = ttk.Frame(left)
         btn_row.pack(fill=tk.X, padx=8, pady=(4, 6))
@@ -588,9 +710,27 @@ class SvgGlyphEditorApp:
         preview_frame.rowconfigure(0, weight=1)
         preview_frame.columnconfigure(0, weight=1)
 
+        # Live zoom: re-display (no re-render) when the zoom value
+        # changes or the preview canvas is resized. Ctrl+wheel zooms
+        # too so you can dial in by scrolling over the preview.
+        self.compose_scale_var.trace_add(
+            "write", lambda *_: self._schedule_compose_display_refresh()
+        )
+        self.compose_canvas.bind(
+            "<Configure>",
+            lambda _e: self._schedule_compose_display_refresh(),
+        )
+        self.compose_canvas.bind(
+            "<Control-MouseWheel>", self._on_compose_ctrl_wheel
+        )
+
         # Preview state.
         self.compose_photo_ref: ImageTk.PhotoImage | None = None
         self.compose_last_image: "Image.Image | None" = None
+        # Per-page high-DPI PIL images. Kept on self so zoom / window
+        # resize can re-display without re-rendering glyphs.
+        self.compose_page_images: list["Image.Image"] = []
+        self._compose_refresh_pending: str | None = None
         self.compose_last_text: str = ""
         # Cache of composed glyph layouts for SVG export: each element is
         # {"x_pt": float, "y_pt": float, "glyph": Glyph, "label": str}.
@@ -699,6 +839,38 @@ class SvgGlyphEditorApp:
         cur_baseline = first_baseline_pt if first_baseline_pt is not None else ref_h
         max_x = 0.0
 
+        # Pulled up here so both the space path and the glyph path see
+        # the same values. Each amplitude feature has its own strength
+        # so e.g. you can have max rotation with zero position jitter.
+        pos_on = bool(nat.get("pos"))
+        pos_strength = float(nat.get("pos_strength", 1.0))
+        rot_on = bool(nat.get("rot"))
+        rot_strength = float(nat.get("rot_strength", 1.0))
+        size_on = bool(nat.get("size"))
+        size_strength = float(nat.get("size_strength", 1.0))
+        spacing_on = bool(nat.get("spacing"))
+        spacing_strength = float(nat.get("spacing_strength", 1.0))
+        letterspacing_on = bool(nat.get("letterspacing"))
+        letterspacing_strength = float(
+            nat.get("letterspacing_strength", 1.0)
+        )
+        word_buffer_pt = float(nat.get("word_buffer", 0.0))
+        letter_buffer_pt = float(nat.get("letter_buffer", 0.0))
+
+        def _space_adv() -> float:
+            """Width of ONE inter-word space. Jittered per occurrence
+            when word-spacing jitter is on so spacing isn't rhythmic.
+            ±25% × strength, clamped to [-40%, +40%] so very high
+            strengths can't collapse words. Additionally floored at
+            max(60% of base, word_buffer_pt) so there's always a clear
+            visible gap between words."""
+            if not spacing_on:
+                return max(space_advance, word_buffer_pt)
+            var = rng.uniform(-0.25, 0.25) * spacing_strength
+            var = max(-0.4, min(0.4, var))
+            candidate = space_advance * (1.0 + var)
+            return max(space_advance * 0.6, word_buffer_pt, candidate)
+
         i = 0
         while i < len(text):
             ch = text[i]
@@ -708,18 +880,21 @@ class SvgGlyphEditorApp:
                 i += 1
                 continue
             if ch == "\t":
-                cur_x += space_advance * 4
+                # Tabs jitter too — treated as four spaces, each with
+                # its own variation.
+                cur_x += sum(_space_adv() for _ in range(4))
                 if cur_x > line_width_pt:
                     cur_x = 0.0
                     cur_baseline += line_height_pt
                 i += 1
                 continue
             if ch.isspace():
-                if cur_x + space_advance > line_width_pt and cur_x > 0:
+                adv = _space_adv()
+                if cur_x + adv > line_width_pt and cur_x > 0:
                     cur_x = 0.0
                     cur_baseline += line_height_pt
                 else:
-                    cur_x += space_advance
+                    cur_x += adv
                     max_x = max(max_x, cur_x)
                 i += 1
                 continue
@@ -753,24 +928,38 @@ class SvgGlyphEditorApp:
             off_x = float(v.offset_x or 0.0) * scale
             off_y = float(v.offset_y or 0.0) * scale
 
-            # Word-wrap: break line when the glyph would overflow.
-            if cur_x + g_w > line_width_pt and cur_x > 0:
+            # Advance width: how far the cursor moves to place the next
+            # glyph. Distinct from g_w so that e.g. a 'q' tail can
+            # overhang into the space of the next letter. Lazy-compute
+            # for libraries that predate the normalize pass that writes
+            # it, then cache on the variant for the rest of this render.
+            if v.advance_x is None:
+                try:
+                    from svg_glyph import compute_advance_x
+                    v.advance_x = float(compute_advance_x(g))
+                except Exception:
+                    v.advance_x = float(g.width)
+            base_adv = float(v.advance_x)
+            adv_w = base_adv * float(v.advance_mul or 1.0) * scale
+
+            # Word-wrap: break line when the glyph would overflow. Using
+            # adv_w (not g_w) means tails can harmlessly hang past the
+            # right margin, same as any proper typography engine.
+            if cur_x + adv_w > line_width_pt and cur_x > 0:
                 cur_x = 0.0
                 cur_baseline += line_height_pt
 
-            # Per-glyph naturalness draws. Amplitudes are scaled by the
-            # global strength multiplier — all of this is rendered below
-            # the content coordinates so flipping a flag off cleanly
-            # zeros its contribution.
-            strength = float(nat.get("strength", 1.0))
-            x_jitter = (rng.uniform(-0.6, 0.6) * strength
-                        if nat.get("pos") else 0.0)
-            y_jitter = (rng.uniform(-0.6, 0.6) * strength
-                        if nat.get("pos") else 0.0)
-            rot_deg = (rng.uniform(-1.8, 1.8) * strength
-                       if nat.get("rot") else 0.0)
-            size_mul = (1.0 + rng.uniform(-0.04, 0.04) * strength
-                        if nat.get("size") else 1.0)
+            # Per-glyph naturalness draws. Each amplitude has its own
+            # strength knob — flipping a checkbox off cleanly zeros
+            # that feature regardless of the others.
+            x_jitter = (rng.uniform(-0.6, 0.6) * pos_strength
+                        if pos_on else 0.0)
+            y_jitter = (rng.uniform(-0.6, 0.6) * pos_strength
+                        if pos_on else 0.0)
+            rot_deg = (rng.uniform(-1.8, 1.8) * rot_strength
+                       if rot_on else 0.0)
+            size_mul = (1.0 + rng.uniform(-0.04, 0.04) * size_strength
+                        if size_on else 1.0)
 
             positions.append({
                 "x_pt": cur_x + off_x,
@@ -787,7 +976,32 @@ class SvgGlyphEditorApp:
                 "rot_deg": rot_deg,
                 "size_mul": size_mul,
             })
-            cur_x += g_w + kerning
+            # Letter spacing jitter. Adds a small ±offset to the base
+            # kerning so some letter pairs crowd a bit, others breathe
+            # — the rhythm real handwriting has instead of metronomic
+            # spacing.
+            eff_kerning = kerning
+            if letterspacing_on:
+                # Cap each random component so very high strengths can't
+                # pull kerning to wild extremes. Proportional piece
+                # respects font size; absolute piece is fixed pt.
+                prop = max(-kerning * 0.6, min(
+                    kerning * 0.6,
+                    rng.uniform(-kerning * 0.6, kerning * 0.6)
+                    * letterspacing_strength,
+                ))
+                abs_jit = max(-0.35, min(0.35,
+                    rng.uniform(-0.25, 0.25) * letterspacing_strength,
+                ))
+                eff_kerning += prop + abs_jit
+            # Hard minimum: letters always have a positive gap between
+            # their bounding boxes. User-configurable via the
+            # "Letter buffer (pt)" field — 0.15 pt by default, enough
+            # to prevent narrow glyphs (i, l, 1) from visually landing
+            # inside their neighbours. Applied whether letter-spacing
+            # jitter is on or off.
+            eff_kerning = max(letter_buffer_pt, eff_kerning)
+            cur_x += adv_w + eff_kerning
             max_x = max(max_x, cur_x)
             i += 1
 
@@ -941,28 +1155,60 @@ class SvgGlyphEditorApp:
         ink_rgba = (20, 20, 20, 255)
         stroke_draw = ImageDraw.Draw(img)
 
-        # Per-line baseline drift. A gentle sinusoid across the page so a
-        # full line of text dips and rises organically instead of hugging
-        # the rule dead-straight. Parameters (amplitude/wavelength/phase)
-        # are sampled once per line and cached by un-jittered baseline y.
-        strength = float(nat.get("strength", 1.0))
+        # Baseline drift — coherent across a page rather than per-line
+        # random. One wavelength + slope + second-harmonic is picked
+        # once per page; each successive line advances the phase by a
+        # fixed step and nudges the amplitude slightly. Result: the
+        # whole page reads as "this person's hand", not a fresh roll
+        # of dice on every line.
         drift_on = bool(nat.get("drift"))
-        drift_params: dict[float, tuple[float, float, float]] = {}
+        drift_strength = float(nat.get("drift_strength", 1.0))
+        if drift_on:
+            page_amp = rng.uniform(0.5, 1.0) * drift_strength
+            page_wavelength = rng.uniform(150.0, 230.0)
+            page_phase0 = rng.uniform(0.0, 2.0 * math.pi)
+            # Phase step per line — large enough that consecutive lines
+            # aren't identical, small enough that they feel related.
+            page_phase_step = rng.uniform(math.pi / 3.5, math.pi / 2.0)
+            # Subtle whole-page slope: sheet feels slightly tilted.
+            # 0.002 * strength × ~500 pt line = ~1 pt max shift.
+            page_slope = rng.uniform(-1.0, 1.0) * 0.002 * drift_strength
+            # Second harmonic adds organic non-sinusoidal shape without
+            # being chaotic.
+            page_h2_amp = page_amp * rng.uniform(0.2, 0.4)
+        else:
+            page_amp = 0.0
+            page_wavelength = 200.0
+            page_phase0 = 0.0
+            page_phase_step = 0.0
+            page_slope = 0.0
+            page_h2_amp = 0.0
+
+        # Per-line params derived from page params. Cached by un-jittered
+        # baseline y so all glyphs on the same line share phase/amp.
+        line_drift_params: dict[float, tuple[float, float]] = {}
+        _line_counter: list[int] = [0]
 
         def _line_drift(line_y: float, x: float) -> float:
             if not drift_on:
                 return 0.0
-            params = drift_params.get(line_y)
+            params = line_drift_params.get(line_y)
             if params is None:
-                amp = rng.uniform(0.4, 1.2) * strength
-                if rng.random() < 0.5:
-                    amp = -amp
-                wavelength = rng.uniform(120.0, 260.0)
-                phase = rng.uniform(0.0, 2.0 * math.pi)
-                params = (amp, wavelength, phase)
-                drift_params[line_y] = params
-            amp, wavelength, phase = params
-            return amp * math.sin(2.0 * math.pi * x / wavelength + phase)
+                idx = _line_counter[0]
+                _line_counter[0] += 1
+                phase = page_phase0 + idx * page_phase_step
+                # Line-to-line amplitude wobble (±15%) so adjacent lines
+                # aren't carbon copies.
+                amp_line = page_amp * rng.uniform(0.85, 1.15)
+                params = (amp_line, phase)
+                line_drift_params[line_y] = params
+            amp_line, phase = params
+            w = 2.0 * math.pi / page_wavelength
+            return (
+                amp_line * math.sin(w * x + phase)
+                + page_h2_amp * math.sin(2.0 * w * x + 2.0 * phase)
+                + page_slope * x
+            )
 
         rot_on = bool(nat.get("rot"))
         size_on = bool(nat.get("size"))
@@ -1092,18 +1338,41 @@ class SvgGlyphEditorApp:
         RENDER_PX_PER_PT = 3.0
         margin_pt = max(0.0, float(self.compose_margin_var.get())) * 72.0
         px_per_pt = RENDER_PX_PER_PT
-        zoom = max(0.1, float(self.compose_scale_var.get()))
+        zoom = max(1.0, float(self.compose_scale_var.get()))
 
         # Collect naturalness toggles once so _layout_text and
         # _render_single_page both see the same settings. Flags map to
         # short keys used throughout the render path.
+        def _nat_strength(var: tk.DoubleVar) -> float:
+            try:
+                return max(0.0, float(var.get()))
+            except (ValueError, tk.TclError):
+                return 0.0
+
         naturalness = {
-            "strength":   max(0.0, float(self.nat_strength_var.get())),
-            "pos":        bool(self.nat_pos_var.get()),
-            "rot":        bool(self.nat_rot_var.get()),
-            "size":       bool(self.nat_size_var.get()),
-            "drift":      bool(self.nat_drift_var.get()),
-            "anti_clump": bool(self.nat_anticlump_var.get()),
+            "pos":                  bool(self.nat_pos_var.get()),
+            "pos_strength":         _nat_strength(self.nat_pos_strength_var),
+            "rot":                  bool(self.nat_rot_var.get()),
+            "rot_strength":         _nat_strength(self.nat_rot_strength_var),
+            "size":                 bool(self.nat_size_var.get()),
+            "size_strength":        _nat_strength(self.nat_size_strength_var),
+            "drift":                bool(self.nat_drift_var.get()),
+            "drift_strength":       _nat_strength(self.nat_drift_strength_var),
+            "spacing":              bool(self.nat_spacing_var.get()),
+            "spacing_strength":     _nat_strength(
+                self.nat_spacing_strength_var
+            ),
+            "letterspacing":        bool(self.nat_letterspacing_var.get()),
+            "letterspacing_strength": _nat_strength(
+                self.nat_letterspacing_strength_var
+            ),
+            "anti_clump":           bool(self.nat_anticlump_var.get()),
+            "word_buffer":          max(0.0, _nat_strength(
+                self.nat_word_buffer_var
+            )),
+            "letter_buffer":        max(0.0, _nat_strength(
+                self.nat_letter_buffer_var
+            )),
         }
 
         # Split text on page-break markers. Empty pages (e.g. trailing
@@ -1173,45 +1442,11 @@ class SvgGlyphEditorApp:
         self.compose_margin_pt = margin_pt
         self.compose_margin_x_pt = eff_margin_x_pt
         self.compose_margin_y_pt = eff_margin_y_pt
+        # Stash the per-page images so zoom / resize can re-display
+        # from them without re-rendering every glyph.
+        self.compose_page_images = page_images
 
-        try:
-            self.compose_canvas.update_idletasks()
-        except Exception:
-            pass
-        canvas_w = max(200, self.compose_canvas.winfo_width())
-        canvas_h = max(200, self.compose_canvas.winfo_height())
-        # Fit-to-canvas: zoom=1 means ONE page fits the preview; extra
-        # pages extend below and are reachable via the vertical scrollbar.
-        inner_w = max(50, canvas_w - 16)
-        inner_h = max(50, canvas_h - 16)
-        fit_scale = min(inner_w / PAGE_W_PT, inner_h / PAGE_H_PT)
-        display_px_per_pt = max(0.1, fit_scale * zoom)
-        disp_w = max(1, int(round(PAGE_W_PT * display_px_per_pt)))
-        disp_h_page = max(1, int(round(PAGE_H_PT * display_px_per_pt)))
-        disp_gap = max(6, int(round(12.0 * display_px_per_pt)))
-
-        self.compose_canvas.delete("all")
-        # Keep a reference list so Tk doesn't GC the PhotoImages.
-        self.compose_photo_refs = []
-        y_display = 0
-        for img in page_images:
-            display_img = img.resize((disp_w, disp_h_page), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(display_img.convert("RGB"))
-            self.compose_photo_refs.append(photo)
-            self.compose_canvas.create_image(
-                0, y_display, image=photo, anchor="nw",
-            )
-            y_display += disp_h_page + disp_gap
-        # Single-page legacy ref so old code paths (and PNG preview of
-        # first page) still work.
-        self.compose_photo_ref = (
-            self.compose_photo_refs[0] if self.compose_photo_refs else None
-        )
-        total_disp_h = max(disp_h_page,
-                           y_display - disp_gap if page_images else disp_h_page)
-        self.compose_canvas.configure(
-            scrollregion=(0, 0, disp_w, total_disp_h),
-        )
+        self._refresh_compose_display()
 
         notes = []
         if all_missing:
@@ -1232,6 +1467,86 @@ class SvgGlyphEditorApp:
             f"{total_glyphs} glyphs, margin {margin_pt / 72.0:.2f} in."
             + (f"  {note_str}" if note_str else "")
         )
+
+    # ── Preview display (zoom / resize, no re-render) ──────────────────
+
+    def _schedule_compose_display_refresh(self) -> None:
+        """Coalesce rapid zoom/resize events into a single redraw on
+        the next idle tick. Prevents LANCZOS-resize thrash when the
+        user scrolls the zoom wheel quickly or drags the window edge."""
+        if self._compose_refresh_pending is not None:
+            try:
+                self.root.after_cancel(self._compose_refresh_pending)
+            except Exception:
+                pass
+        self._compose_refresh_pending = self.root.after(
+            30, self._refresh_compose_display
+        )
+
+    def _refresh_compose_display(self) -> None:
+        """Resize the cached per-page images to the current zoom and
+        canvas size, then paint them on the compose canvas. Cheap
+        enough to run live on the zoom slider; no glyph rendering
+        happens here."""
+        self._compose_refresh_pending = None
+        if not self.compose_page_images:
+            return
+        page_w_pt, page_h_pt = getattr(
+            self, "compose_page_pt", (612.0, 792.0)
+        )
+        try:
+            zoom = max(1.0, float(self.compose_scale_var.get()))
+        except (ValueError, tk.TclError):
+            return
+
+        try:
+            self.compose_canvas.update_idletasks()
+        except Exception:
+            pass
+        canvas_w = max(200, self.compose_canvas.winfo_width())
+        canvas_h = max(200, self.compose_canvas.winfo_height())
+        inner_w = max(50, canvas_w - 16)
+        inner_h = max(50, canvas_h - 16)
+        fit_scale = min(inner_w / page_w_pt, inner_h / page_h_pt)
+        display_px_per_pt = max(0.1, fit_scale * zoom)
+        disp_w = max(1, int(round(page_w_pt * display_px_per_pt)))
+        disp_h_page = max(1, int(round(page_h_pt * display_px_per_pt)))
+        disp_gap = max(6, int(round(12.0 * display_px_per_pt)))
+
+        self.compose_canvas.delete("all")
+        self.compose_photo_refs = []
+        y_display = 0
+        for img in self.compose_page_images:
+            display_img = img.resize((disp_w, disp_h_page), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(display_img.convert("RGB"))
+            self.compose_photo_refs.append(photo)
+            self.compose_canvas.create_image(
+                0, y_display, image=photo, anchor="nw",
+            )
+            y_display += disp_h_page + disp_gap
+        self.compose_photo_ref = (
+            self.compose_photo_refs[0] if self.compose_photo_refs else None
+        )
+        total_disp_h = max(
+            disp_h_page,
+            y_display - disp_gap if self.compose_page_images else disp_h_page,
+        )
+        self.compose_canvas.configure(
+            scrollregion=(0, 0, disp_w, total_disp_h),
+        )
+
+    def _on_compose_ctrl_wheel(self, event: tk.Event) -> str:
+        """Ctrl+scroll over the preview zooms in/out. Returns "break"
+        so the canvas itself doesn't also scroll on the same event."""
+        try:
+            cur = float(self.compose_scale_var.get())
+        except (ValueError, tk.TclError):
+            cur = 1.0
+        step = 0.1 if event.delta > 0 else -0.1
+        new = max(1.0, min(5.0, round(cur + step, 2)))
+        if new != cur:
+            self.compose_scale_var.set(new)
+        return "break"
 
     def on_compose_save_png(self) -> None:
         if self.compose_last_image is None:
@@ -1764,6 +2079,11 @@ class SvgGlyphEditorApp:
         # normalized or PDF-imported, which changes glyph geometry.
         if hasattr(self, "compose_centerline_cache"):
             self.compose_centerline_cache.clear()
+        # Drop thumbnail cache: after a reload the variant set usually
+        # changes wholesale, so old entries are mostly dead weight.
+        # (Individual edits don't need this — the mtime-keyed cache
+        # self-invalidates per file.)
+        self._thumb_cache.clear()
 
         all_orig_h = [v.orig_h for v in self.variants
                       if v.orig_h is not None]
@@ -1819,42 +2139,103 @@ class SvgGlyphEditorApp:
         arr[~mask] = (220, 220, 220)
         return Image.fromarray(arr, mode="RGB")
 
-    def make_thumb(self, variant: GlyphVariant, selected: bool) -> ImageTk.PhotoImage:
-        canvas = self.checker_bg(self.thumb_box, self.thumb_box)
+    def _checker_bg_cached(self) -> "Image.Image":
+        """Checker background for thumbnails is pure decoration and
+        identical for every tile — compute it once, hand back copies."""
+        if (self._thumb_checker_bg is None
+                or self._thumb_checker_bg.size != (self.thumb_box, self.thumb_box)):
+            self._thumb_checker_bg = self.checker_bg(
+                self.thumb_box, self.thumb_box
+            )
+        return self._thumb_checker_bg
+
+    def make_thumb(self, variant: GlyphVariant) -> ImageTk.PhotoImage:
+        """Rasterize a variant into a PhotoImage tile. Selection
+        highlighting is handled separately on the canvas, so this
+        output is stable per (path, mtime) and cacheable."""
+        try:
+            mtime_ns = variant.abs_path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        key = (str(variant.abs_path), mtime_ns)
+        cached = self._thumb_cache.get(key)
+        if cached is not None:
+            return cached
+
+        canvas = self._checker_bg_cached().copy()
         if variant.abs_path.exists():
             try:
                 g = Glyph.from_file(variant.abs_path)
-                # Coarse bezier sampling — thumbnails are 90 px, fine curve
-                # detail is invisible and halves the non-zero scanline cost.
+                # Coarse bezier sampling — thumbnails are 90 px, fine
+                # curve detail is invisible and halves the non-zero
+                # scanline cost.
                 img = rasterize_glyph(
                     g, self.thumb_box, self.thumb_box,
                     pad=6, n_per_bezier=4,
                 )
                 canvas.paste(img.convert("RGB"), mask=img.split()[3])
             except Exception:
-                miss = Image.new("RGBA", (self.thumb_box, self.thumb_box), (255, 0, 0, 55))
-                canvas = Image.alpha_composite(canvas.convert("RGBA"), miss).convert("RGB")
+                miss = Image.new(
+                    "RGBA", (self.thumb_box, self.thumb_box),
+                    (255, 0, 0, 55),
+                )
+                canvas = Image.alpha_composite(
+                    canvas.convert("RGBA"), miss
+                ).convert("RGB")
         else:
-            miss = Image.new("RGBA", (self.thumb_box, self.thumb_box), (255, 0, 0, 55))
-            canvas = Image.alpha_composite(canvas.convert("RGBA"), miss).convert("RGB")
+            miss = Image.new(
+                "RGBA", (self.thumb_box, self.thumb_box),
+                (255, 0, 0, 55),
+            )
+            canvas = Image.alpha_composite(
+                canvas.convert("RGBA"), miss
+            ).convert("RGB")
 
-        # Border
         out = canvas.convert("RGBA")
-        bcol = (30, 110, 240, 255) if selected else (150, 150, 150, 255)
-        border = Image.new("RGBA", out.size, (0, 0, 0, 0))
-        bpx = border.load()
-        for x in range(self.thumb_box):
-            bpx[x, 0] = bcol
-            bpx[x, self.thumb_box - 1] = bcol
-        for y in range(self.thumb_box):
-            bpx[0, y] = bcol
-            bpx[self.thumb_box - 1, y] = bcol
-        out.alpha_composite(border)
-        return ImageTk.PhotoImage(out.convert("RGB"))
+        # Default neutral border. Selection is drawn on the canvas as a
+        # separate rectangle so selection changes don't invalidate the
+        # cache.
+        ImageDraw.Draw(out).rectangle(
+            (0, 0, self.thumb_box - 1, self.thumb_box - 1),
+            outline=(150, 150, 150, 255), width=1,
+        )
+        photo = ImageTk.PhotoImage(out.convert("RGB"))
+        self._thumb_cache[key] = photo
+        return photo
+
+    def _update_selection_highlight(self) -> None:
+        """Draw/move the selection rectangle on the grid canvas. Called
+        whenever selected_global_idx changes; O(1) regardless of grid
+        size."""
+        if self._selection_canvas_id is not None:
+            try:
+                self.grid_canvas.delete(self._selection_canvas_id)
+            except tk.TclError:
+                pass
+            self._selection_canvas_id = None
+        if self.selected_global_idx is None:
+            return
+        try:
+            n = self.filtered_indices.index(self.selected_global_idx)
+        except ValueError:
+            return
+        cols = max(1, self.grid_cols)
+        row, col = divmod(n, cols)
+        x_pad = y_pad = 10
+        x0 = x_pad + col * self.cell_w
+        y0 = y_pad + row * self.cell_h
+        self._selection_canvas_id = self.grid_canvas.create_rectangle(
+            x0, y0,
+            x0 + self.thumb_box - 1, y0 + self.thumb_box - 1,
+            outline="#1e6ef0", width=3,
+        )
 
     def rebuild_grid(self) -> None:
         self.grid_canvas.delete("all")
         self.grid_photo_refs.clear()
+        # Previous selection rect belonged to the just-deleted canvas
+        # items; reset so _update_selection_highlight draws a fresh one.
+        self._selection_canvas_id = None
 
         cols = max(1, self.grid_cols)
         x_pad = 10
@@ -1864,8 +2245,7 @@ class SvgGlyphEditorApp:
             x0 = x_pad + col * self.cell_w
             y0 = y_pad + row * self.cell_h
             v = self.variants[global_idx]
-            selected = self.selected_global_idx == global_idx
-            photo = self.make_thumb(v, selected)
+            photo = self.make_thumb(v)
             self.grid_photo_refs.append(photo)
             self.grid_canvas.create_image(x0, y0, image=photo, anchor="nw")
             self.grid_canvas.create_text(
@@ -1877,6 +2257,7 @@ class SvgGlyphEditorApp:
         content_h = y_pad * 2 + total_rows * self.cell_h
         content_w = x_pad * 2 + cols * self.cell_w
         self.grid_canvas.configure(scrollregion=(0, 0, content_w, content_h))
+        self._update_selection_highlight()
 
     def on_grid_click(self, event: tk.Event) -> None:
         cols = max(1, self.grid_cols)
@@ -1893,7 +2274,9 @@ class SvgGlyphEditorApp:
             return
         self.selected_global_idx = self.filtered_indices[idx_in_filtered]
         self.load_selected_into_editor()
-        self.rebuild_grid()
+        # Just move the selection rect — don't re-rasterize the whole
+        # grid for a selection change.
+        self._update_selection_highlight()
 
     # ── Selection / load ────────────────────────────────────────────────
 
@@ -1933,6 +2316,7 @@ class SvgGlyphEditorApp:
         self.editor_offset_x = float(v.offset_x or 0.0)
         self.editor_offset_y = float(v.offset_y or 0.0)
         self._set_glyph_scale(float(v.user_scale or 1.0), redraw=False)
+        self._set_advance_mul(float(v.advance_mul or 1.0))
 
         self.sel_label_var.set(f"Label: {v.label}")
         self.sel_lib_var.set(f"Library: {v.lib_path}")
@@ -2216,6 +2600,27 @@ class SvgGlyphEditorApp:
     def reset_glyph_scale(self) -> None:
         self._set_glyph_scale(1.0, redraw=True)
 
+    # ── Advance multiplier handlers ─────────────────────────────────────
+
+    def on_advance_mul_changed(self, *_args: object) -> None:
+        if self._suppress_advance_callback:
+            return
+        try:
+            v = float(self.glyph_advance_mul_var.get())
+        except Exception:
+            return
+        self._set_advance_mul(v)
+
+    def _set_advance_mul(self, mul: float) -> None:
+        clamped = min(1.5, max(0.3, float(mul)))
+        self.glyph_advance_mul = clamped
+        self.glyph_advance_mul_display_var.set(f"{clamped:.2f}x")
+        self._suppress_advance_callback = True
+        try:
+            self.glyph_advance_mul_var.set(clamped)
+        finally:
+            self._suppress_advance_callback = False
+
     def reset_shift(self) -> None:
         if self.editor_glyph is None:
             return
@@ -2260,6 +2665,7 @@ class SvgGlyphEditorApp:
         offset_x_pt = float(self.editor_offset_x)
         offset_y_pt = float(self.editor_offset_y)
         user_scale = float(self.glyph_user_scale)
+        advance_mul = float(self.glyph_advance_mul)
 
         try:
             self._update_variant_metrics(
@@ -2269,10 +2675,12 @@ class SvgGlyphEditorApp:
                 offset_x=offset_x_pt,
                 offset_y=offset_y_pt,
                 user_scale=user_scale,
+                advance_mul=advance_mul,
             )
             v.offset_x = offset_x_pt
             v.offset_y = offset_y_pt
             v.user_scale = user_scale
+            v.advance_mul = advance_mul
         except Exception as ex:  # noqa: BLE001
             messagebox.showwarning(
                 "Metadata update warning",
@@ -2312,6 +2720,7 @@ class SvgGlyphEditorApp:
         offset_x: float | None = None,
         offset_y: float | None = None,
         user_scale: float | None = None,
+        advance_mul: float | None = None,
     ) -> None:
         with open(v.idx_path, encoding="utf-8") as f:
             index = json.load(f)
@@ -2334,6 +2743,8 @@ class SvgGlyphEditorApp:
                     ne["offset_y"] = float(offset_y)
                 if user_scale is not None:
                     ne["user_scale"] = float(user_scale)
+                if advance_mul is not None:
+                    ne["advance_mul"] = float(advance_mul)
                 new_entries.append(ne)
                 updated = True
             else:
@@ -2470,7 +2881,8 @@ class SvgGlyphEditorApp:
             except ValueError:
                 self.selected_global_idx = self.filtered_indices[0]
         self.load_selected_into_editor()
-        self.rebuild_grid()
+        # Selection change only — no need to rebuild the grid.
+        self._update_selection_highlight()
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────

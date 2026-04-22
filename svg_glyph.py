@@ -28,6 +28,12 @@ from typing import Iterator
 from PIL import Image, ImageDraw, ImageFont
 
 
+# Bumped whenever compute_advance_x changes semantics. Libraries loaded
+# with a stored value older than this have their cached advance_x
+# ignored and recomputed on first use.
+ADVANCE_ALGO_VERSION = 3
+
+
 # ── Segment types ───────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -539,6 +545,12 @@ def normalize_library(
             entry["orig_h"] = new_h
             entry["orig_w"] = new_w
             entry["baseline"] = new_baseline
+            try:
+                adv = compute_advance_x(transformed)
+                entry["advance_x"] = round(adv, 3)
+            except Exception:
+                # Non-fatal: layout falls back to orig_w when absent.
+                pass
             rewritten += 1
         except Exception as ex:  # noqa: BLE001
             errors.append(f"{rel_path}: {ex}")
@@ -546,6 +558,7 @@ def normalize_library(
     index["version"] = 3
     index["format"] = "svg"
     index["glyphs"] = glyphs
+    index["advance_algo_version"] = ADVANCE_ALGO_VERSION
     with open(idx_path, "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, indent=2)
 
@@ -932,3 +945,87 @@ def rasterize_glyph(
         for poly in open_polys:
             draw.line(poly, fill=fg, width=stroke_w)
     return img
+
+
+def compute_advance_x(
+    glyph: "Glyph",
+    empty_ratio: float = 0.03,
+    gap_width_ratio: float = 0.03,
+    min_advance_ratio: float = 0.92,
+) -> float:
+    """Return the x (in glyph-local units) at which the cursor should
+    advance for layout.
+
+    Logic: a letter has a "tail" (q, fancy f, curly t, etc.) when its
+    rightmost ink is a thin appendage *separated by a gap* from the
+    main body. We detect that by rasterizing the glyph, taking the
+    per-column ink count, and looking for a sustained empty run between
+    a body region on the left and any ink to its right. If we find one,
+    the advance is the column just before the gap. Otherwise the glyph
+    has no distinct tail (t, C, i, normal letters) and the advance is
+    the full ink bbox — nothing is trimmed.
+
+    `min_advance_ratio` of 0.92 caps the trim to at most 8 % of the
+    bbox width, so even letters with big tails (q) only just barely
+    overhang into the next letter's space. Letters that should tuck
+    in harder can use the per-variant advance_mul override in the
+    editor rather than letting the heuristic do anything extreme.
+    """
+    import numpy as np
+    if glyph.width <= 0 or glyph.height <= 0:
+        return float(glyph.width)
+    target_w = 200
+    aspect = glyph.height / max(1.0, glyph.width)
+    target_h = max(1, int(round(target_w * aspect)))
+    img = rasterize_glyph(glyph, target_w, target_h,
+                           pad=0, n_per_bezier=6)
+    alpha = np.array(img.split()[3])  # (target_h, target_w)
+    col_mass = (alpha > 80).sum(axis=0)
+    peak = int(col_mass.max()) if col_mass.size else 0
+    if peak <= 0:
+        return float(glyph.width)
+
+    # "Empty" threshold: near-zero relative to the glyph's peak column.
+    # Using a tiny fraction (3 %) instead of a large one means even thin
+    # features like a t's crossbar are counted as ink, so only genuine
+    # ink-free gaps register as empty.
+    empty_thr = max(1, int(round(peak * empty_ratio)))
+    is_empty = col_mass <= empty_thr
+
+    ink_cols = np.where(~is_empty)[0]
+    if ink_cols.size == 0:
+        return float(glyph.width)
+    rightmost_ink = int(ink_cols[-1])
+
+    # Minimum gap width to qualify as "the body ends here and a tail
+    # resumes further right". Below this we treat the region as
+    # continuous (e.g. the small space between a t's stem and crossbar
+    # pixels won't trigger).
+    min_gap_cols = max(4, int(round(target_w * gap_width_ratio)))
+
+    # Walk right→left from the rightmost inked column. If we cross a
+    # sustained empty run, the body ends just before it.
+    empty_run = 0
+    body_right = rightmost_ink  # default: no tail detected
+    for i in range(rightmost_ink, -1, -1):
+        if is_empty[i]:
+            empty_run += 1
+            if empty_run >= min_gap_cols:
+                # Skip back through the rest of the gap to find the
+                # last inked column of the body.
+                j = i
+                while j > 0 and is_empty[j]:
+                    j -= 1
+                tail_cols = rightmost_ink - i  # approx tail width
+                body_cols = j + 1              # approx body width
+                # Sanity: only trim if the body is at least as wide as
+                # the tail (otherwise we might have mistaken a tiny
+                # island on the left as the body).
+                if body_cols >= tail_cols:
+                    body_right = j
+                break
+        else:
+            empty_run = 0
+
+    advance = (body_right + 1) / target_w * glyph.width
+    return max(advance, glyph.width * min_advance_ratio)
