@@ -471,6 +471,17 @@ class SvgGlyphEditorApp:
         # F2 = coverage report. bind_all so it fires regardless of which
         # tab or widget has focus (including the compose Text box).
         self.root.bind_all("<F2>", self.on_show_coverage_report)
+        # Ctrl+R = render. Also bind_all so it works while typing in
+        # the compose text box — that's the common case (edit, then
+        # re-render).
+        self.root.bind_all(
+            "<Control-r>",
+            lambda _e: (self.on_compose_render(), "break")[1],
+        )
+        self.root.bind_all(
+            "<Control-R>",
+            lambda _e: (self.on_compose_render(), "break")[1],
+        )
         self._coverage_window: tk.Toplevel | None = None
 
     # ── Compose page ────────────────────────────────────────────────────
@@ -575,15 +586,30 @@ class SvgGlyphEditorApp:
                         ).grid(row=5, column=0, columnspan=4,
                                sticky="w", pady=(2, 0))
 
-        # Naturalness panel.
+        # Naturalness panel (collapsible — click the header to
+        # hide/show the body so it doesn't hog vertical space when
+        # you're not tweaking it).
         #   • Geometric "feel" effects (position / rotation / drift)
         #     are sliders — you drag, you see.
         #   • Dimensional effects (size, word / letter spacing) and
         #     absolute minimum-gap buffers are spinboxes — you want
         #     to type a specific number.
-        nat = ttk.LabelFrame(left, text="Naturalness")
-        nat.pack(fill=tk.X, padx=8, pady=(4, 6))
+        nat_outer = ttk.Frame(left, relief="groove", borderwidth=1)
+        nat_outer.pack(fill=tk.X, padx=8, pady=(4, 6))
+
+        self._nat_expanded = True
+        self._nat_header_text_var = tk.StringVar(value="▾  Naturalness")
+        ttk.Button(nat_outer,
+                    textvariable=self._nat_header_text_var,
+                    command=self._toggle_naturalness_panel,
+                    style="Toolbutton"
+                    ).pack(fill=tk.X)
+
+        nat = ttk.Frame(nat_outer)
+        nat.pack(fill=tk.X)
         nat.columnconfigure(1, weight=1)
+        # Remember the body so the toggle can hide/show it.
+        self._nat_body = nat
 
         self.nat_pos_var = tk.BooleanVar(value=True)
         self.nat_pos_strength_var = tk.DoubleVar(value=1.0)
@@ -678,13 +704,10 @@ class SvgGlyphEditorApp:
 
         btn_row = ttk.Frame(left)
         btn_row.pack(fill=tk.X, padx=8, pady=(4, 6))
-        ttk.Button(btn_row, text="Render",
+        ttk.Button(btn_row, text="Render (Ctrl+R)",
                    command=self.on_compose_render).pack(side=tk.LEFT)
-        ttk.Button(btn_row, text="Save PNG…",
-                   command=self.on_compose_save_png
-                   ).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(btn_row, text="Save SVG…",
-                   command=self.on_compose_save_svg
+        ttk.Button(btn_row, text="Export…",
+                   command=self.on_compose_export_clicked
                    ).pack(side=tk.LEFT, padx=(8, 0))
 
         self.compose_status = tk.StringVar(value="")
@@ -1548,49 +1571,27 @@ class SvgGlyphEditorApp:
             self.compose_scale_var.set(new)
         return "break"
 
-    def on_compose_save_png(self) -> None:
+    def _write_png_file(self, path: Path) -> None:
+        """Write the stacked preview image to `path` (raises on error)."""
         if self.compose_last_image is None:
-            messagebox.showinfo("Nothing to save", "Render the text first.")
-            return
-        path_str = filedialog.asksaveasfilename(
-            parent=self.root, title="Save rendered text as PNG",
-            defaultextension=".png",
-            filetypes=[("PNG", "*.png"), ("All files", "*.*")],
-        )
-        if not path_str:
-            return
-        try:
-            self.compose_last_image.convert("RGB").save(path_str)
-        except Exception as ex:  # noqa: BLE001
-            messagebox.showerror("Save failed", str(ex))
-            return
-        self.compose_status.set(f"Wrote {path_str}")
+            raise RuntimeError("Nothing to export — render the text first.")
+        self.compose_last_image.convert("RGB").save(str(path))
 
-    def on_compose_save_svg(self) -> None:
-        """Export the composed layout as SVG, translating each glyph's
-        path 'd' into page coordinates. Coordinates are in PDF points so
-        a plotter can scale it to any physical size. Multi-page docs emit
-        one SVG per page (suffixed _p1, _p2, ...) since most plotters
-        feed one physical sheet at a time."""
+    def _write_svg_files(self, base_path: Path) -> list[Path]:
+        """Emit per-page SVGs rooted at `base_path`. Single-page docs
+        write `base_path` itself; multi-page docs write `<stem>_p1.svg`,
+        `<stem>_p2.svg`, … next to it. Returns the list of paths
+        written. Raises on error."""
         page_layouts: list[list[dict]] = getattr(
             self, "compose_page_layouts", [self.compose_layout]
         )
         if not page_layouts or not any(page_layouts):
-            messagebox.showinfo("Nothing to save", "Render the text first.")
-            return
-        path_str = filedialog.asksaveasfilename(
-            parent=self.root, title="Save composed SVG",
-            defaultextension=".svg",
-            filetypes=[("SVG", "*.svg"), ("All files", "*.*")],
-        )
-        if not path_str:
-            return
+            raise RuntimeError("Nothing to export — render the text first.")
 
         page_w, page_h = getattr(self, "compose_page_pt", (612.0, 792.0))
         margin_pt = getattr(self, "compose_margin_pt", 36.0)
         margin_x_pt = getattr(self, "compose_margin_x_pt", margin_pt)
         margin_y_pt = getattr(self, "compose_margin_y_pt", margin_pt)
-
         thickness_pt = max(0.05, float(self.compose_thickness_var.get()))
 
         def _path_d(pts: list[tuple[float, float]], closed: bool) -> str:
@@ -1611,10 +1612,7 @@ class SvgGlyphEditorApp:
                 f'stroke-linecap="round" stroke-linejoin="round">',
             ]
             # Prefer the cached post-jitter polylines so plotter output
-            # matches what the user sees in the preview (rotation, drift,
-            # wobble, size, position). Fall back to recomputing from raw
-            # centerlines only if the layout predates this cache — e.g.
-            # loaded from an older on-disk state.
+            # matches what the user sees in the preview.
             for item in page_positions:
                 page_strokes = item.get("page_strokes")
                 if page_strokes:
@@ -1652,29 +1650,140 @@ class SvgGlyphEditorApp:
             parts.append("</svg>")
             return "\n".join(parts)
 
-        base = Path(path_str)
-        written: list[str] = []
-        try:
-            if len(page_layouts) == 1:
-                base.write_text(_render_svg(page_layouts[0]), encoding="utf-8")
-                written.append(str(base))
-            else:
-                stem = base.stem
-                for idx, page_positions in enumerate(page_layouts, start=1):
-                    out = base.with_name(f"{stem}_p{idx}{base.suffix}")
-                    out.write_text(
-                        _render_svg(page_positions), encoding="utf-8"
-                    )
-                    written.append(str(out))
-        except Exception as ex:  # noqa: BLE001
-            messagebox.showerror("Save failed", str(ex))
-            return
-        if len(written) == 1:
-            self.compose_status.set(f"Wrote {written[0]}")
+        written: list[Path] = []
+        if len(page_layouts) == 1:
+            base_path.write_text(
+                _render_svg(page_layouts[0]), encoding="utf-8"
+            )
+            written.append(base_path)
         else:
+            stem = base_path.stem
+            for idx, page_positions in enumerate(page_layouts, start=1):
+                out = base_path.with_name(f"{stem}_p{idx}{base_path.suffix}")
+                out.write_text(_render_svg(page_positions), encoding="utf-8")
+                written.append(out)
+        return written
+
+    def _toggle_naturalness_panel(self) -> None:
+        """Show / hide the Naturalness body. The arrow in the header
+        (▾ / ▸) reflects the current state."""
+        self._nat_expanded = not self._nat_expanded
+        if self._nat_expanded:
+            self._nat_header_text_var.set("▾  Naturalness")
+            self._nat_body.pack(fill=tk.X)
+        else:
+            self._nat_header_text_var.set("▸  Naturalness")
+            self._nat_body.pack_forget()
+
+    # ── Unified export ──────────────────────────────────────────────────
+
+    def on_compose_export_clicked(self) -> None:
+        """One-stop export: pick format (PNG / SVG / Both) then filename.
+        Replaces the old separate Save-PNG / Save-SVG buttons."""
+        if self.compose_last_image is None or not getattr(
+            self, "compose_page_layouts", None
+        ):
+            messagebox.showinfo("Nothing to export",
+                                 "Render the text first.")
+            return
+
+        fmt_var = tk.StringVar(value="png")
+
+        win = tk.Toplevel(self.root)
+        win.title("Export")
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.grab_set()
+
+        ttk.Label(win, text="Choose a format:"
+                   ).pack(padx=14, pady=(14, 6), anchor="w")
+        for label, value in (
+            ("PNG — stacked pages, single image", "png"),
+            ("SVG — one file per page, plotter-ready", "svg"),
+            ("Both — PNG + SVG with the same basename", "both"),
+        ):
+            ttk.Radiobutton(win, text=label, variable=fmt_var, value=value
+                             ).pack(padx=22, anchor="w")
+
+        btn_row = ttk.Frame(win)
+        btn_row.pack(fill=tk.X, padx=12, pady=(12, 12))
+
+        def _go() -> None:
+            choice = fmt_var.get()
+            win.destroy()
+            self._run_export(choice)
+
+        ttk.Button(btn_row, text="Export…", command=_go
+                    ).pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(btn_row, text="Cancel", command=win.destroy
+                    ).pack(side=tk.RIGHT)
+        win.bind("<Return>", lambda _e: _go())
+        win.bind("<Escape>", lambda _e: win.destroy())
+
+    def _run_export(self, fmt: str) -> None:
+        """Pop the save dialog appropriate for `fmt` and write the
+        file(s). For 'both' the user supplies ONE basename and both a
+        .png and matching .svg(s) are written next to it."""
+        if fmt == "png":
+            path_str = filedialog.asksaveasfilename(
+                parent=self.root, title="Export PNG",
+                defaultextension=".png",
+                filetypes=[("PNG", "*.png"), ("All files", "*.*")],
+            )
+            if not path_str:
+                return
+            try:
+                self._write_png_file(Path(path_str))
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror("Export failed", str(ex))
+                return
+            self.compose_status.set(f"Wrote {path_str}")
+
+        elif fmt == "svg":
+            path_str = filedialog.asksaveasfilename(
+                parent=self.root, title="Export SVG",
+                defaultextension=".svg",
+                filetypes=[("SVG", "*.svg"), ("All files", "*.*")],
+            )
+            if not path_str:
+                return
+            try:
+                written = self._write_svg_files(Path(path_str))
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror("Export failed", str(ex))
+                return
+            if len(written) == 1:
+                self.compose_status.set(f"Wrote {written[0]}")
+            else:
+                self.compose_status.set(
+                    f"Wrote {len(written)} SVG files "
+                    f"({written[0].name} … {written[-1].name})"
+                )
+
+        elif fmt == "both":
+            path_str = filedialog.asksaveasfilename(
+                parent=self.root, title="Export (basename)",
+                defaultextension="",
+                filetypes=[("All files", "*.*")],
+            )
+            if not path_str:
+                return
+            base = Path(path_str)
+            # Strip any extension the user may have typed so we can
+            # attach both .png and .svg ourselves.
+            stem_path = base.with_suffix("")
+            png_path = stem_path.with_suffix(".png")
+            svg_path = stem_path.with_suffix(".svg")
+            try:
+                self._write_png_file(png_path)
+                written = self._write_svg_files(svg_path)
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror("Export failed", str(ex))
+                return
+            svg_count = len(written)
             self.compose_status.set(
-                f"Wrote {len(written)} files "
-                f"({written[0]} … {written[-1]})"
+                f"Wrote {png_path.name} + {svg_count} SVG file"
+                + ("s" if svg_count != 1 else "")
             )
 
     # ── Library / grid ──────────────────────────────────────────────────
@@ -1949,16 +2058,34 @@ class SvgGlyphEditorApp:
                                   "Folder name can't be empty.")
             return
 
+        import shutil
+
         root = libraries_root()
         dest = root / folder_name
+
+        # Allow loading "over" an existing folder — common case is
+        # re-loading a handwriting you saved earlier into the same
+        # slot. Confirm since it's destructive, then wipe the folder
+        # before extracting so stale variants from the old library
+        # don't mix in with the loaded ones.
         if dest.exists():
-            messagebox.showerror(
-                "Folder exists",
-                f"A folder named '{folder_name}' already exists in\n"
-                f"{root}\n"
-                "Pick a different name or delete the existing folder.",
-            )
-            return
+            if not messagebox.askyesno(
+                "Replace existing handwriting?",
+                f"'{folder_name}' already exists in\n{root}\n\n"
+                "Replace its contents with the handwriting you're loading?\n"
+                "The current contents will be permanently deleted.",
+                icon="warning",
+                default="no",
+            ):
+                return
+            try:
+                shutil.rmtree(dest)
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror(
+                    "Couldn't replace folder",
+                    f"Failed to remove the existing folder:\n{ex}",
+                )
+                return
 
         try:
             dest.mkdir(parents=True)
@@ -1967,7 +2094,6 @@ class SvgGlyphEditorApp:
         except Exception as ex:  # noqa: BLE001
             # Clean up the partial extraction so the name is free for
             # another try.
-            import shutil
             shutil.rmtree(dest, ignore_errors=True)
             messagebox.showerror("Load failed", str(ex))
             return
