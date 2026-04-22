@@ -1,8 +1,16 @@
 # text-to-handwriting-gcode
 
-Create a reusable 'font' and render text on a page with scans of your handwriting!
+Create a reusable 'font' and render text on a page with scans of your handwriting - exportable as PNG, SVG, and G-Code (Penplotters/3D-printers)
 
-The app extracts characters from scanned PDF using Tesseract OCR and converts it to an SVG glyph. The glyphs are then formatted on a page to mimic handwriting. This page can be exported as PNG, SVG, or COMING SOON G-Code (Penplotters/3D-printers)
+## Overview
+This project extracts characters from scanned PDF using Tesseract OCR and converts it into a reusable SVG glyph library. The glyphs are then formatted on a page with naturalness features to mimic handwriting.
+
+## Demo
+
+coming soon
+
+- video
+- images
 
 ## Installation
 
@@ -35,10 +43,8 @@ Desktop, not in the repo.
 | Arrow keys | Nudge selected glyph (editor tab) |
 | F2 | Open library coverage report |
 
+## Ethical Use Disclaimer
 
-## Notes
+This project is intended for creative, educational, and research purposes. 
 
-- The `.hwfont` format is just a zip of a library folder; you can open
-  one with any archive tool if you ever need to inspect it by hand.
-- Libraries are intentionally kept on your Desktop (outside the repo)
-  so they can stay private even if the code is public.
+It should not be used for any malicious intent. This includes impersonation, forgery, and claiming generated handwriting as authentic human work.
