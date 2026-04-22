@@ -25,13 +25,13 @@ Requires Python 3.10+ and:
 pip install pillow numpy scipy scikit-image opencv-python pymupdf pytesseract
 ```
 
-## ▶️ Run
+## ✏️ Run
 
 ```bash
 python svg_glyph_editor_app.py
 ```
 
-> 📁 On first launch the app creates `~/Desktop/handwriting_libraries/` and a `default/` folder inside it. Handwriting libraries live on your Desktop, not in the repo.
+> On first launch the app creates `~/Desktop/handwriting_libraries/` and a `default/` folder inside it. Handwriting libraries live on your Desktop, not in the repo.
 
 
 ## ⌨️ Shortcuts
@@ -42,7 +42,7 @@ python svg_glyph_editor_app.py
 | Ctrl + R | Render the compose page |
 | F2 | Open library coverage report |
 
-## ⚠️ Ethical Use Disclaimer
+## ⚠️ Ethical Use Disclaimer ⚠️
 
 This project is intended for **creative, educational, and research purposes**.
 
