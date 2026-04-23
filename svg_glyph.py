@@ -1029,3 +1029,126 @@ def compute_advance_x(
 
     advance = (body_right + 1) / target_w * glyph.width
     return max(advance, glyph.width * min_advance_ratio)
+
+
+def suggest_split_x(glyph: "Glyph") -> float:
+    """Propose an x-coordinate (in glyph-local units) to split the
+    glyph at — the centre of the widest empty vertical gap within the
+    middle 30–70 % of the bbox. Returns width/2 as a fallback when no
+    gap is clear (user can then manually drag the cut line)."""
+    import numpy as np
+    if glyph.width <= 0 or glyph.height <= 0:
+        return float(glyph.width) / 2.0
+    target_w = 200
+    aspect = glyph.height / max(1.0, glyph.width)
+    target_h = max(1, int(round(target_w * aspect)))
+    img = rasterize_glyph(glyph, target_w, target_h,
+                           pad=0, n_per_bezier=6)
+    alpha = np.array(img.split()[3])
+    col_mass = (alpha > 80).sum(axis=0)
+    peak = int(col_mass.max()) if col_mass.size else 0
+    if peak <= 0:
+        return glyph.width / 2.0
+    empty_thr = max(1, int(round(peak * 0.03)))
+    is_empty = col_mass <= empty_thr
+
+    lo = int(target_w * 0.25)
+    hi = int(target_w * 0.75)
+    best_start: int | None = None
+    best_len = 0
+    i = lo
+    while i < hi:
+        if is_empty[i]:
+            j = i
+            while j < hi and is_empty[j]:
+                j += 1
+            run_len = j - i
+            if run_len > best_len:
+                best_len = run_len
+                best_start = i
+            i = j
+        else:
+            i += 1
+
+    min_gap = max(3, int(round(target_w * 0.03)))
+    if best_start is not None and best_len >= min_gap:
+        centre_col = best_start + best_len // 2
+        return centre_col / target_w * glyph.width
+    return glyph.width / 2.0
+
+
+def split_glyph_at_x(glyph: "Glyph", cut_x: float) -> tuple["Glyph", "Glyph"]:
+    """Bisect the glyph by a vertical line at `cut_x`. Each subpath's
+    polyline is sampled; whichever side of the cut the subpath's
+    centroid lies on, that's the side it goes to. Afterwards each
+    half is re-origined so its leftmost ink is at x = 0 and its width
+    reflects its own extent. Heights and baselines are left untouched.
+
+    Subpaths that straddle the cut line still get assigned whole (by
+    centroid) — this function assumes `cut_x` falls in a real gap
+    between two glyphs, which is the only situation where the result
+    is clean. For glyphs without a clean gap, expect rough edges."""
+    def _poly(sub: list[Segment]) -> list[tuple[float, float]]:
+        tmp = Glyph(subpaths=[sub], width=glyph.width,
+                     height=glyph.height)
+        parts = tmp.sample_polylines(n_per_bezier=8)
+        out: list[tuple[float, float]] = []
+        for p in parts:
+            out.extend(p)
+        return out
+
+    left_subs: list[list[Segment]] = []
+    right_subs: list[list[Segment]] = []
+    for sub in glyph.subpaths:
+        poly = _poly(sub)
+        if not poly:
+            continue
+        cx = sum(x for x, _ in poly) / len(poly)
+        (left_subs if cx < cut_x else right_subs).append(sub)
+
+    def _reorigin(subs: list[list[Segment]]) -> tuple[list[list[Segment]], float]:
+        if not subs:
+            return [], 0.0
+        xs: list[float] = []
+        for sub in subs:
+            for x, _ in _poly(sub):
+                xs.append(x)
+        if not xs:
+            return subs, 0.0
+        min_x = min(xs)
+        max_x = max(xs)
+        out: list[list[Segment]] = []
+        for sub in subs:
+            shifted: list[Segment] = []
+            for s in sub:
+                if isinstance(s, MoveTo):
+                    shifted.append(MoveTo(s.x - min_x, s.y))
+                elif isinstance(s, LineTo):
+                    shifted.append(LineTo(s.x - min_x, s.y))
+                elif isinstance(s, CubicTo):
+                    shifted.append(CubicTo(
+                        s.x1 - min_x, s.y1,
+                        s.x2 - min_x, s.y2,
+                        s.x - min_x, s.y,
+                    ))
+                else:  # ClosePath
+                    shifted.append(s)
+            out.append(shifted)
+        return out, max(0.0, max_x - min_x)
+
+    left_shifted, left_w = _reorigin(left_subs)
+    right_shifted, right_w = _reorigin(right_subs)
+
+    left = Glyph(
+        subpaths=left_shifted,
+        width=left_w if left_w > 0 else glyph.width,
+        height=glyph.height,
+        fill=glyph.fill,
+    )
+    right = Glyph(
+        subpaths=right_shifted,
+        width=right_w if right_w > 0 else glyph.width,
+        height=glyph.height,
+        fill=glyph.fill,
+    )
+    return left, right

@@ -385,6 +385,9 @@ class SvgGlyphEditorApp:
                    command=self.save_transform).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Reset Shift",
                    command=self.reset_shift).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(buttons, text="Split…",
+                   command=self.on_split_glyph_clicked
+                   ).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(buttons, text="Delete Variant",
                    command=self.delete_variant).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(buttons, text="Next", command=self.select_next).pack(
@@ -3062,6 +3065,241 @@ class SvgGlyphEditorApp:
             messagebox.showerror("Delete failed", str(ex))
             return
         self.reload_variants()
+
+    # ── Split glyph ─────────────────────────────────────────────────────
+
+    def _write_new_variant(
+        self, lib_path: Path, label: str, new_glyph: "Glyph",
+        baseline_ratio: float,
+    ) -> None:
+        """Create a new variant entry for `label` in `lib_path`. Writes
+        the SVG into the appropriate per-label subfolder (auto-numbered
+        _N suffix) and appends an index.json entry with orig_h /
+        orig_w / baseline / advance_x populated."""
+        from svg_glyph import compute_advance_x
+
+        idx_path = lib_path / "index.json"
+        with open(idx_path, encoding="utf-8") as f:
+            index = json.load(f)
+        glyphs = index.setdefault("glyphs", {})
+        entries: list[dict] = glyphs.setdefault(label, [])
+
+        label_dir = safe_label_dir(label)
+        label_folder = lib_path / label_dir
+        label_folder.mkdir(parents=True, exist_ok=True)
+
+        # Next available _N — scan existing entries AND any files left
+        # in the folder (in case index and disk got out of sync).
+        next_n = 0
+        for entry in entries:
+            stem = Path(entry.get("path", "")).stem
+            if stem.startswith(f"{label_dir}_"):
+                try:
+                    next_n = max(next_n, int(stem[len(label_dir) + 1:]) + 1)
+                except ValueError:
+                    pass
+        for existing in label_folder.glob(f"{label_dir}_*.svg"):
+            stem = existing.stem
+            try:
+                next_n = max(next_n, int(stem[len(label_dir) + 1:]) + 1)
+            except ValueError:
+                pass
+
+        filename = f"{label_dir}_{next_n}.svg"
+        out_file = label_folder / filename
+        new_glyph.save(out_file)
+
+        new_entry: dict = {
+            "path": f"{label_dir}/{filename}",
+            "orig_h": round(new_glyph.height, 3),
+            "orig_w": round(new_glyph.width, 3),
+            "baseline": round(new_glyph.height * baseline_ratio, 3),
+        }
+        try:
+            new_entry["advance_x"] = round(compute_advance_x(new_glyph), 3)
+        except Exception:
+            pass
+        entries.append(new_entry)
+
+        with open(idx_path, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+
+    def on_split_glyph_clicked(self) -> None:
+        """Open a dialog that bisects the current glyph at a user-chosen
+        x-coordinate. Used to fix OCR mis-merges where two letters got
+        wrapped into a single variant (e.g. 'il', 'ti', '11')."""
+        v = self.current_variant()
+        if v is None or self.editor_glyph is None:
+            messagebox.showinfo("No glyph",
+                                 "Select a glyph to split first.")
+            return
+
+        from svg_glyph import split_glyph_at_x, suggest_split_x
+
+        glyph = self.editor_glyph
+        orig_baseline = (
+            float(v.baseline) if v.baseline is not None
+            else glyph.height * 0.9
+        )
+        baseline_ratio = (
+            orig_baseline / glyph.height if glyph.height > 0 else 0.9
+        )
+
+        win = tk.Toplevel(self.root)
+        win.title(f"Split glyph: {v.label!r}")
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.grab_set()
+
+        # Preview canvas — rasterize the glyph and overlay a draggable
+        # cut line. Canvas coords are independent of glyph-local; we
+        # keep a scale factor to convert between them.
+        canvas_w, canvas_h = 480, 220
+        canvas = tk.Canvas(win, width=canvas_w, height=canvas_h,
+                            bg="white", highlightthickness=1,
+                            highlightbackground="#888")
+        canvas.pack(padx=12, pady=(12, 8))
+
+        px_per_pt = min(
+            (canvas_w - 20) / max(1.0, glyph.width),
+            (canvas_h - 20) / max(1.0, glyph.height),
+        )
+        draw_w = max(1, int(glyph.width * px_per_pt))
+        draw_h = max(1, int(glyph.height * px_per_pt))
+        img = rasterize_glyph(glyph, draw_w, draw_h,
+                               pad=0, fg=(0, 0, 0, 255))
+        photo = ImageTk.PhotoImage(img.convert("RGB"))
+        img_x = (canvas_w - draw_w) // 2
+        img_y = (canvas_h - draw_h) // 2
+        canvas.create_image(img_x, img_y, image=photo, anchor="nw")
+        canvas._photo_ref = photo  # prevent GC  # type: ignore[attr-defined]
+
+        cut_var = tk.DoubleVar(value=suggest_split_x(glyph))
+        line_id = [canvas.create_line(0, 0, 0, 0,
+                                        fill="#e33", width=2,
+                                        dash=(4, 3))]
+
+        def _redraw_line(*_args: object) -> None:
+            try:
+                cut_x_glyph = float(cut_var.get())
+            except (ValueError, tk.TclError):
+                return
+            cx = img_x + cut_x_glyph * px_per_pt
+            canvas.coords(line_id[0], cx, 0, cx, canvas_h)
+        _redraw_line()
+        cut_var.trace_add("write", _redraw_line)
+
+        # Drag the line directly on the canvas.
+        def _on_drag(event: tk.Event) -> None:
+            x_glyph = (event.x - img_x) / max(1e-6, px_per_pt)
+            x_glyph = max(0.0, min(float(glyph.width), x_glyph))
+            cut_var.set(x_glyph)
+        canvas.bind("<B1-Motion>", _on_drag)
+        canvas.bind("<Button-1>", _on_drag)
+
+        # Controls row: slider + Auto.
+        ctrl_row = ttk.Frame(win)
+        ctrl_row.pack(fill=tk.X, padx=12, pady=(0, 8))
+        ttk.Label(ctrl_row, text="Cut at (pt):").pack(side=tk.LEFT)
+        ttk.Scale(ctrl_row, from_=0.0, to=float(glyph.width),
+                   variable=cut_var,
+                   orient="horizontal", length=220,
+                   ).pack(side=tk.LEFT, padx=(6, 6), fill=tk.X, expand=True)
+        ttk.Button(
+            ctrl_row, text="Auto-detect",
+            command=lambda: cut_var.set(suggest_split_x(glyph)),
+        ).pack(side=tk.LEFT)
+
+        # Labels row.
+        lbl_row = ttk.Frame(win)
+        lbl_row.pack(fill=tk.X, padx=12, pady=(0, 8))
+        ttk.Label(lbl_row, text="Left label:").grid(row=0, column=0,
+                                                      sticky="w")
+        first_char = v.label[0] if v.label else ""
+        last_char = v.label[-1] if len(v.label) > 1 else ""
+        left_label_var = tk.StringVar(value=first_char)
+        ttk.Entry(lbl_row, textvariable=left_label_var, width=6
+                   ).grid(row=0, column=1, padx=(6, 14))
+        ttk.Label(lbl_row, text="Right label:").grid(row=0, column=2,
+                                                       sticky="w")
+        right_label_var = tk.StringVar(value=last_char)
+        ttk.Entry(lbl_row, textvariable=right_label_var, width=6
+                   ).grid(row=0, column=3, padx=(6, 0))
+
+        # Confirm / Cancel.
+        btn_row = ttk.Frame(win)
+        btn_row.pack(fill=tk.X, padx=12, pady=(4, 12))
+
+        def _do_split() -> None:
+            left_label = left_label_var.get().strip()
+            right_label = right_label_var.get().strip()
+            if not left_label or not right_label:
+                messagebox.showerror(
+                    "Labels required",
+                    "Enter a label for both halves."
+                )
+                return
+            try:
+                cut_x = float(cut_var.get())
+            except (ValueError, tk.TclError):
+                return
+            try:
+                left_g, right_g = split_glyph_at_x(glyph, cut_x)
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror("Split failed",
+                                      f"{type(ex).__name__}: {ex}")
+                return
+            if not left_g.subpaths or not right_g.subpaths:
+                messagebox.showerror(
+                    "Split failed",
+                    "One side ended up empty. Move the cut line so "
+                    "both sides contain ink.",
+                )
+                return
+
+            try:
+                self._write_new_variant(
+                    v.lib_path, left_label, left_g, baseline_ratio,
+                )
+                self._write_new_variant(
+                    v.lib_path, right_label, right_g, baseline_ratio,
+                )
+                # Remove the original variant's entry + file so it
+                # doesn't haunt the library as a duplicate.
+                self._remove_variant_from_index(v)
+                try:
+                    if v.abs_path.exists():
+                        v.abs_path.unlink()
+                    plotter_twin = v.abs_path.with_suffix(".plotter.svg")
+                    if plotter_twin.exists():
+                        plotter_twin.unlink()
+                except Exception:
+                    pass
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror("Split failed",
+                                      f"{type(ex).__name__}: {ex}")
+                return
+
+            win.destroy()
+            self.reload_variants()
+            if hasattr(self, "_thumb_cache"):
+                self._thumb_cache.clear()
+            self.compose_centerline_cache.clear()
+            self.rebuild_grid()
+            self.editor_save_status.set(
+                f"Split into '{left_label}' + '{right_label}'"
+            )
+            self.root.after(
+                3000, lambda: self.editor_save_status.set("")
+            )
+
+        ttk.Button(btn_row, text="Cancel",
+                    command=win.destroy).pack(side=tk.RIGHT)
+        ttk.Button(btn_row, text="Split",
+                    command=_do_split
+                    ).pack(side=tk.RIGHT, padx=(0, 6))
+        win.bind("<Escape>", lambda _e: win.destroy())
+        win.bind("<Return>", lambda _e: _do_split())
 
     def apply_relabel(self) -> None:
         v = self.current_variant()
